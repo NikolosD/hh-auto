@@ -15,14 +15,18 @@ if sys.platform == "win32":
     sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8')
 
 from hh_bot.utils.logger import setup_logging, get_logger
+from hh_bot.utils.config import set_cli_overrides
 
 log = get_logger(__name__)
 
 
-def _load_config(config_path: str):
+def _load_config(config_path: str, cli_opts: dict = None):
     from hh_bot.utils.config import load_config
     try:
-        return load_config(config_path)
+        cfg = load_config(config_path)
+        if cli_opts:
+            set_cli_overrides(cli_opts)
+        return cfg
     except FileNotFoundError as e:
         click.echo(f"Error: {e}", err=True)
         sys.exit(1)
@@ -37,6 +41,7 @@ def cli(ctx: click.Context, config: str, log_level: str) -> None:
     setup_logging(log_level)
     ctx.ensure_object(dict)
     ctx.obj["config_path"] = config
+    ctx.obj["cli_opts"] = {}
 
 
 @cli.command()
@@ -61,11 +66,46 @@ def login(ctx: click.Context) -> None:
 
 @cli.command()
 @click.option("--query", "-q", default="", help="Поисковый запрос (например: 'Python разработчик')")
+@click.option("--area-id", "-a", type=int, help="Регион (113=Россия, 1=Москва, 2=СПб)")
+@click.option("--max-pages", "-p", type=int, help="Макс. страниц поиска")
+@click.option("--max-apps", "-m", type=int, help="Макс. откликов за сессию")
+@click.option("--skip-tests/--no-skip-tests", default=None, help="Пропускать вакансии с тестовым заданием")
+@click.option("--skip-direct/--no-skip-direct", default=None, help="Пропускать вакансии с внешней ссылкой")
+@click.option("--cover-letter/--no-cover-letter", default=None, help="Добавлять сопроводительное письмо")
+@click.option("--headless", is_flag=True, help="Запускать браузер в фоновом режиме")
 @click.option("--dry-run", is_flag=True, help="Только парсинг без реальных откликов")
 @click.pass_context
-def run(ctx: click.Context, query: str, dry_run: bool) -> None:
+def run(
+    ctx: click.Context,
+    query: str,
+    area_id: int | None,
+    max_pages: int | None,
+    max_apps: int | None,
+    skip_tests: bool | None,
+    skip_direct: bool | None,
+    cover_letter: bool | None,
+    headless: bool,
+    dry_run: bool,
+) -> None:
     """Запустить сессию автоматических откликов."""
-    cfg = _load_config(ctx.obj["config_path"])
+    # Собираем CLI-опции для переопределения конфига
+    cli_opts = {}
+    if area_id is not None:
+        cli_opts["search.area_id"] = area_id
+    if max_pages is not None:
+        cli_opts["search.max_pages"] = max_pages
+    if max_apps is not None:
+        cli_opts["limits.max_applications_per_session"] = max_apps
+    if skip_tests is not None:
+        cli_opts["filters.skip_with_tests"] = skip_tests
+    if skip_direct is not None:
+        cli_opts["filters.skip_direct_vacancies"] = skip_direct
+    if cover_letter is not None:
+        cli_opts["cover_letter.enabled"] = cover_letter
+    if headless:
+        cli_opts["browser.headless"] = True
+    
+    cfg = _load_config(ctx.obj["config_path"], cli_opts)
 
     # Get query from config or prompt
     if not query:

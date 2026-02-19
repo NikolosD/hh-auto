@@ -61,6 +61,24 @@ class Config(BaseModel):
 
 
 _config: Optional[Config] = None
+_cli_overrides: dict = {}
+
+
+def set_cli_overrides(overrides: dict) -> None:
+    """Установить переопределения конфига из CLI-аргументов."""
+    global _cli_overrides
+    _cli_overrides = overrides
+
+
+def _apply_overrides(config: Config, overrides: dict) -> Config:
+    """Применить CLI-переопределения к конфигу."""
+    for key, value in overrides.items():
+        parts = key.split(".")
+        obj = config
+        for part in parts[:-1]:
+            obj = getattr(obj, part)
+        setattr(obj, parts[-1], value)
+    return config
 
 
 def load_config(path: str = "config.yaml") -> Config:
@@ -74,6 +92,11 @@ def load_config(path: str = "config.yaml") -> Config:
     with open(config_path, "r", encoding="utf-8") as f:
         data = yaml.safe_load(f) or {}
     _config = Config.model_validate(data)
+    
+    # Применяем CLI-переопределения
+    if _cli_overrides:
+        _config = _apply_overrides(_config, _cli_overrides)
+    
     return _config
 
 
