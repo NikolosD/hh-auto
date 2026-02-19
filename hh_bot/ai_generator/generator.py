@@ -361,24 +361,38 @@ def _truncate_letter(text: str, max_chars: int = 1000, max_paragraphs: int = 5) 
 
 
 def _ensure_letter_contacts(text: str) -> str:
-    """Ensure Telegram and name signature are present in the letter."""
+    """Ensure Telegram and name signature are present in the letter.
+    
+    Also replaces placeholders like @username, Иван with real data.
+    """
     from hh_bot.utils.config import get_config
     cfg = get_config()
     
-    # Check if Telegram is already there
-    has_telegram = "telegram" in text.lower() or cfg.auth.telegram and f"@{cfg.auth.telegram}" in text
+    telegram = cfg.auth.telegram
+    name = cfg.auth.name or (cfg.auth.email.split('@')[0] if cfg.auth.email else "")
+    
+    # Replace placeholder @username with real telegram
+    if telegram:
+        text = text.replace("@username", f"@{telegram}")
+        text = text.replace("@your_username", f"@{telegram}")
+        text = text.replace("Telegram: username", f"Telegram: @{telegram}")
+    
+    # Replace placeholder name "Иван" with real name
+    if name:
+        text = text.replace(", Иван", f", {name}")
+        text = text.replace("\nИван", f"\n{name}")
+        text = text.replace("Иван\n", f"{name}\n")
+    
+    # Check if real telegram is already there
+    has_real_telegram = telegram and (f"@{telegram}" in text or f"t.me/{telegram}" in text)
     
     # Add Telegram if missing and configured
-    if not has_telegram and cfg.auth.telegram:
-        text += f"\n\nTelegram: @{cfg.auth.telegram}"
+    if not has_real_telegram and telegram:
+        text += f"\n\nTelegram: @{telegram}"
     
     # Add name signature if missing
-    if "с уважением" not in text.lower():
-        name = cfg.auth.name
-        if not name and cfg.auth.email:
-            name = cfg.auth.email.split('@')[0]
-        if name:
-            text += f"\n\nС уважением,\n{name}"
+    if "с уважением" not in text.lower() and name:
+        text += f"\n\nС уважением,\n{name}"
     
     return text
 

@@ -261,18 +261,38 @@ def _smart_truncate(text: str, max_chars: int = 500) -> str:
 
 
 def _ensure_contacts(text: str, cfg) -> str:
-    """Ensure Telegram and name signature are in the letter."""
-    # Check if Telegram is already there
-    has_telegram = "telegram" in text.lower() or "@" in text
+    """Ensure Telegram and name signature are in the letter.
     
-    # Add Telegram if missing and configured
-    if not has_telegram and cfg.auth.telegram:
-        text += f"\n\nTelegram: @{cfg.auth.telegram}"
+    Also replaces placeholders like @username, Иван with real data.
+    """
+    telegram = cfg.auth.telegram
+    name = cfg.auth.name or (cfg.auth.email.split('@')[0] if cfg.auth.email else "")
     
-    # Add name signature if missing
-    if "с уважением" not in text.lower():
-        name = cfg.auth.name or cfg.auth.email.split('@')[0] if cfg.auth.email else ""
-        if name:
+    # Replace placeholder @username with real telegram
+    if telegram:
+        # Replace various placeholder patterns
+        text = text.replace("@username", f"@{telegram}")
+        text = text.replace("@your_username", f"@{telegram}")
+        text = text.replace("Telegram: username", f"Telegram: @{telegram}")
+        
+        # Check if real telegram is already there (not just any @)
+        has_real_telegram = f"@{telegram}" in text or f"t.me/{telegram}" in text
+        
+        # Add Telegram if missing
+        if not has_real_telegram and "telegram" not in text.lower():
+            text += f"\n\nTelegram: @{telegram}"
+    
+    # Replace placeholder name "Иван" with real name
+    if name:
+        text = text.replace(", Иван", f", {name}")
+        text = text.replace("\nИван", f"\n{name}")
+        text = text.replace("Иван\n", f"{name}\n")
+        
+        # Check if real name is in signature
+        has_real_name = name.lower() in text.lower()
+        
+        # Add signature if missing
+        if not has_real_name and "с уважением" not in text.lower():
             text += f"\n\nС уважением,\n{name}"
     
     return text
