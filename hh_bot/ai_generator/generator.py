@@ -119,12 +119,24 @@ async def generate_ai_cover_letter(
             
             log.info(f"Response status: {response.status_code}")
             
-            if response.status_code == 429:
-                log.warning("Rate limit hit (429), retrying with fallback model...")
-                # Try with a different free model
-                payload["model"] = AIModel.MISTRAL_7B_FREE
-                response = await client.post(OPENROUTER_URL, headers=headers, json=payload)
-                log.info(f"Retry response status: {response.status_code}")
+            # Handle rate limit or model not found - try fallback models
+            if response.status_code in (429, 404):
+                log.warning(f"Model error ({response.status_code}), trying fallback models...")
+                fallback_models = [
+                    AIModel.MISTRAL_7B_FREE,
+                    AIModel.LLAMA_3_1_8B_FREE,
+                    AIModel.QWEN_2_5_7B_FREE,
+                    AIModel.GEMMA_2_9B_FREE,
+                ]
+                for fallback_model in fallback_models:
+                    if fallback_model == config.model:
+                        continue
+                    log.info(f"Trying fallback model: {fallback_model}")
+                    payload["model"] = fallback_model
+                    response = await client.post(OPENROUTER_URL, headers=headers, json=payload)
+                    log.info(f"Fallback response status: {response.status_code}")
+                    if response.status_code == 200:
+                        break
             
             response.raise_for_status()
             data = response.json()
