@@ -25,6 +25,9 @@ class SearchConfig(BaseModel):
     area_id: Union[int, List[int]] = 113  # Одна страна/регион (или список для совместимости)
     area_ids: list[int] = []  # Несколько стран (если указано, используется это вместо area_id)
     max_pages: int = 5
+    # Search field: "name" (title only), "description", "company_name", or empty (all fields)
+    # Empty/default = search everywhere (like website), gives more results
+    search_field: str = ""  # "name", "description", "company_name", or "" for all
     
     @field_validator('area_ids', mode='before')
     @classmethod

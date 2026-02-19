@@ -30,6 +30,7 @@ async def search_vacancies(
     query: str,
     area_id: int | list[int] = 113,
     page_num: int = 0,
+    search_field: str = "",
 ) -> List[VacancyCard]:
     """Navigate to search results page and parse vacancy cards.
     
@@ -37,14 +38,26 @@ async def search_vacancies(
         area_id: Single area ID or list of area IDs for multiple countries
                  Common IDs: 113=Russia, 16=Belarus, 40=Kazakhstan, 
                  1=Moscow, 2=St.Petersburg
+        search_field: "name" (title only), "description", "company_name", 
+                     or "" for all fields (default, like website)
     """
+    from hh_bot.utils.config import get_config
+    cfg = get_config()
+    
+    # Use config value if not provided
+    if not search_field and cfg.search.search_field:
+        search_field = cfg.search.search_field
+    
     # Build params with support for multiple areas
     params_list = [
         ("text", query),
         ("page", page_num),
         ("per_page", 20),
-        ("search_field", "name"),
     ]
+    
+    # Add search_field only if specified (empty = search everywhere like website)
+    if search_field:
+        params_list.append(("search_field", search_field))
     
     # Handle single or multiple area IDs
     if isinstance(area_id, list):
