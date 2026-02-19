@@ -50,6 +50,8 @@ async def generate_with_groq(
     vacancy: VacancyDetails,
     vacancy_description: Optional[str] = None,
     config: Optional[AIGeneratorConfig] = None,
+    telegram: Optional[str] = None,
+    author_name: Optional[str] = None,
 ) -> Optional[str]:
     """Generate cover letter using Groq API."""
     if not HAS_HTTPX:
@@ -61,11 +63,8 @@ async def generate_with_groq(
         return None
     
     try:
-        from hh_bot.utils.config import get_config
-        cfg = get_config()
-        
         # Build prompt
-        user_prompt = _build_groq_prompt(resume, vacancy, vacancy_description)
+        user_prompt = _build_groq_prompt(resume, vacancy, vacancy_description, telegram, author_name)
         
         headers = {
             "Content-Type": "application/json",
@@ -103,7 +102,7 @@ async def generate_with_groq(
                         # Clean, ensure contacts, then truncate to 500 chars
                         cover_letter = _clean_cover_letter(cover_letter)
                         # Add contacts BEFORE truncation so they have priority
-                        cover_letter = _ensure_contacts(cover_letter, cfg)
+                        cover_letter = _ensure_contacts(cover_letter, telegram, author_name)
                         # Truncate but keep contacts visible
                         cover_letter = _smart_truncate(cover_letter, max_chars=500)
                         log.info(f"✅ After truncate: {len(cover_letter)} chars")
@@ -122,6 +121,8 @@ def _build_groq_prompt(
     resume: ResumeInfo,
     vacancy: VacancyDetails,
     vacancy_description: Optional[str] = None,
+    telegram: Optional[str] = None,
+    author_name: Optional[str] = None,
 ) -> str:
     """Build prompt for Groq."""
     from hh_bot.utils.config import get_config
@@ -256,13 +257,12 @@ def _smart_truncate(text: str, max_chars: int = 500) -> str:
     return result.strip()
 
 
-def _ensure_contacts(text: str, cfg) -> str:
+def _ensure_contacts(text: str, telegram: Optional[str], author_name: Optional[str]) -> str:
     """Append Telegram and name signature to the end of letter.
     
     Assumes AI generated only the body without contacts.
     """
-    telegram = cfg.auth.telegram
-    name = cfg.auth.name or (cfg.auth.email.split('@')[0] if cfg.auth.email else "")
+    name = author_name
     
     # Clean up any accidental contacts AI might have added
     lines = text.split('\n')

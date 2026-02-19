@@ -208,6 +208,8 @@ async def generate_cover_letter(
             vacancy=vacancy,
             vacancy_description=vacancy_description,
             config=ai_config,
+            telegram=cfg.auth.telegram,
+            author_name=cfg.auth.name or cfg.auth.email.split('@')[0] if cfg.auth.email else None,
         )
         
         if ai_letter:
@@ -222,6 +224,10 @@ async def generate_cover_letter(
     log.info("Generating fallback cover letter...")
     letter = generate_fallback_cover_letter(resume, vacancy_title, company_name, vacancy_description)
     log.info(f"Fallback letter generated: {len(letter)} chars")
+    
+    # Add contacts to fallback letter
+    from hh_bot.ai_generator.groq_generator import _ensure_contacts
+    letter = _ensure_contacts(letter, cfg.auth.telegram, cfg.auth.name or cfg.auth.email.split('@')[0] if cfg.auth.email else None)
     return letter
 
 

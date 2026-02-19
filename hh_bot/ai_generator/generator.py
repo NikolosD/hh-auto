@@ -57,6 +57,8 @@ async def generate_ai_cover_letter(
     vacancy: VacancyDetails,
     vacancy_description: Optional[str] = None,
     config: Optional[AIGeneratorConfig] = None,
+    telegram: Optional[str] = None,
+    author_name: Optional[str] = None,
 ) -> Optional[str]:
     """
     Generate a cover letter using AI.
@@ -110,7 +112,7 @@ async def generate_ai_cover_letter(
         
         log.info("🔄 OpenRouter failed, trying Groq...")
         from hh_bot.ai_generator.groq_generator import generate_with_groq
-        result = await generate_with_groq(resume, vacancy, vacancy_description, config)
+        result = await generate_with_groq(resume, vacancy, vacancy_description, config, telegram, author_name)
         if result:
             return result
         
