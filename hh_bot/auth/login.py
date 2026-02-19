@@ -15,6 +15,104 @@ LOGIN_URL = "https://hh.ru/account/login?role=applicant"
 APPLICANT_URL = "https://hh.ru/applicant/resumes"
 
 
+async def get_current_user_email(page: Page) -> str | None:
+    """Get email of currently logged in user, or None if not logged in."""
+    try:
+        # Go to profile/settings page to see email
+        await page.goto("https://hh.ru/applicant/settings", wait_until="domcontentloaded", timeout=10000)
+        await sleep_page_load()
+        
+        # Look for email on the page
+        email_el = page.locator(
+            "[data-qa='email-value'], "
+            "[data-qa='account-email'], "
+            ".account-email, "
+            "input[type='email'][readonly], "
+            "input[type='email'][disabled]"
+        ).first
+        
+        if await email_el.count() > 0:
+            email = await email_el.input_value() or await email_el.inner_text()
+            if email and "@" in email:
+                log.debug("Found current user email", email=email)
+                return email.strip()
+        
+        # Try to find email in account menu
+        await page.goto("https://hh.ru/", wait_until="domcontentloaded", timeout=10000)
+        await sleep_page_load()
+        
+        # Click on profile menu to see email
+        profile_btn = page.locator(
+            "[data-qa='profile-menu-button'], "
+            "[data-qa='user-menu'], "
+            "[data-qa='account-menu']"
+        ).first
+        
+        if await profile_btn.count() > 0:
+            await profile_btn.click()
+            await sleep_micro()
+            
+            # Look for email in dropdown
+            email_in_menu = page.locator(
+                ".profile-menu-email, "
+                "[data-qa='profile-menu-email'], "
+                ".user-menu-email"
+            ).first
+            
+            if await email_in_menu.count() > 0:
+                email = await email_in_menu.inner_text()
+                if email and "@" in email:
+                    return email.strip()
+        
+        return None
+    except Exception as e:
+        log.debug("Error getting current user email", error=str(e))
+        return None
+
+
+async def logout(page: Page) -> bool:
+    """Logout from current account."""
+    try:
+        log.info("Logging out from current account...")
+        
+        # Try to find logout button
+        await page.goto("https://hh.ru/", wait_until="domcontentloaded", timeout=10000)
+        await sleep_page_load()
+        
+        # Open profile menu
+        profile_btn = page.locator(
+            "[data-qa='profile-menu-button'], "
+            "[data-qa='user-menu'], "
+            "[data-qa='account-menu'], "
+            "[data-qa='profileAndResumes-button']"
+        ).first
+        
+        if await profile_btn.count() > 0:
+            await profile_btn.click()
+            await sleep_micro()
+        
+        # Look for logout link/button
+        logout_btn = page.locator(
+            "[data-qa='logout-button'], "
+            "[data-qa='header-logout'], "
+            "a[href*='/logout'], "
+            "button:has-text('Выйти'), "
+            "a:has-text('Выйти')"
+        ).first
+        
+        if await logout_btn.count() > 0:
+            await logout_btn.click()
+            await sleep_page_load()
+            log.info("Successfully logged out")
+            return True
+        
+        log.warning("Logout button not found")
+        return False
+    except Exception as e:
+        log.warning("Error during logout", error=str(e))
+        return False
+
+
 async def is_logged_in(page: Page) -> bool:
     """Check if the user is already logged in by looking for profile elements."""
     try:
@@ -61,6 +159,30 @@ async def is_logged_in(page: Page) -> bool:
 async def do_login_with_email(page: Page, email: str) -> None:
     """Perform full email login flow with provided email."""
     log.info("Starting login with provided email", email=email)
+    
+    # Check if already logged in with different account
+    if await is_logged_in(page):
+        current_email = await get_current_user_email(page)
+        if current_email and current_email.lower() != email.lower():
+            log.info(
+                "Logged in with different account",
+                current=current_email,
+                requested=email
+            )
+            print(f"\n⚠️  Внимание: Вы уже вошли как {current_email}")
+            print(f"   Нужно войти как: {email}")
+            
+            # Try to logout
+            if await logout(page):
+                print("   ✓ Выполнен выход из текущего аккаунта")
+            else:
+                print("   ⚠️  Не удалось выполнить выход автоматически")
+                print("   Пожалуйста, выйдите вручную и перезапустите скрипт")
+                raise RuntimeError("Logout failed - please logout manually")
+        elif current_email and current_email.lower() == email.lower():
+            log.info("Already logged in with requested email", email=email)
+            print(f"\n✅ Уже авторизованы как {email}")
+            return
     
     log.info("Navigating to login page")
     await page.goto(LOGIN_URL, wait_until="domcontentloaded", timeout=20000)
