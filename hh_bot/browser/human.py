@@ -38,23 +38,41 @@ async def human_type(page: Page, selector: str, text: str) -> None:
     element = page.locator(selector).first
     await element.click()
     await sleep_micro()
-
-    for i, char in enumerate(text):
-        await page.keyboard.type(char)
-        await sleep_typing(i)
+    
+    # Use element type instead of page.keyboard to ensure text goes to the right field
+    # even if page loses focus during typing
+    await element.clear()
+    await element.press_sequentially(text, delay=random.randint(30, 80))
 
     log.debug("Typed text", chars=len(text))
 
 
 async def human_type_locator(page: Page, locator: Locator, text: str) -> None:
-    """Type text into a Locator with human-like delays."""
+    """Type text into a Locator with human-like delays.
+    
+    Uses element.press_sequentially() which ensures text goes to the specific element
+    regardless of page focus state. This prevents lost characters when user clicks
+    outside the browser during typing.
+    """
+    # Ensure element is visible and focused
+    await locator.scroll_into_view_if_needed()
     await locator.click()
     await sleep_micro()
-
-    for i, char in enumerate(text):
-        await page.keyboard.type(char)
-        await sleep_typing(i)
-
+    
+    # Clear any existing content
+    await locator.clear()
+    await sleep_micro()
+    
+    # Type character-by-character using element method (not page.keyboard)
+    # This ensures text goes to THIS element even if page loses focus
+    try:
+        # Try press_sequentially first (Playwright 1.40+)
+        await locator.press_sequentially(text, delay=random.randint(30, 80))
+    except AttributeError:
+        # Fallback: use fill() for atomic operation
+        log.debug("press_sequentially not available, using fill()")
+        await locator.fill(text)
+    
     log.debug("Typed text into locator", chars=len(text))
 
 
