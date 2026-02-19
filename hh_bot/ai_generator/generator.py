@@ -198,7 +198,9 @@ async def _generate_with_openrouter(
                 log.info(f"✅ AI cover letter generated: {len(cover_letter)} chars")
                 # Clean and truncate if too long
                 cover_letter = _clean_cover_letter(cover_letter)
-                cover_letter = _truncate_letter(cover_letter, max_chars=1000, max_paragraphs=5)
+                cover_letter = _truncate_letter(cover_letter, max_chars=700, max_paragraphs=5)
+                # Ensure contacts are present
+                cover_letter = _ensure_letter_contacts(cover_letter)
                 log.info(f"✅ Final letter length: {len(cover_letter)} chars")
                 return cover_letter
             else:
@@ -356,6 +358,29 @@ def _truncate_letter(text: str, max_chars: int = 1000, max_paragraphs: int = 5) 
         result += "."
     
     return result
+
+
+def _ensure_letter_contacts(text: str) -> str:
+    """Ensure Telegram and name signature are present in the letter."""
+    from hh_bot.utils.config import get_config
+    cfg = get_config()
+    
+    # Check if Telegram is already there
+    has_telegram = "telegram" in text.lower() or cfg.auth.telegram and f"@{cfg.auth.telegram}" in text
+    
+    # Add Telegram if missing and configured
+    if not has_telegram and cfg.auth.telegram:
+        text += f"\n\nTelegram: @{cfg.auth.telegram}"
+    
+    # Add name signature if missing
+    if "с уважением" not in text.lower():
+        name = cfg.auth.name
+        if not name and cfg.auth.email:
+            name = cfg.auth.email.split('@')[0]
+        if name:
+            text += f"\n\nС уважением,\n{name}"
+    
+    return text
 
 
 def _clean_about_text(text: str) -> str:
