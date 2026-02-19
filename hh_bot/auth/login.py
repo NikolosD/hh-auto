@@ -94,8 +94,15 @@ async def do_login_with_email(page: Page, email: str) -> None:
         "input[placeholder*='email']"
     ).first
     await email_input.wait_for(state="visible", timeout=10000)
+    
+    # Clear field first (remove any autofilled/saved email)
+    log.info("Clearing email field")
+    await email_input.fill("")
+    await email_input.clear()
+    await sleep_micro()
+    
     log.info("Typing email", email=email)
-    await human_type_locator(page, email_input, email)
+    await email_input.fill(email)  # Use fill instead of type for reliability
     await sleep_micro()
 
     # Step 4: Click "Continue" button ("Дальше")
