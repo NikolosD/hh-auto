@@ -20,10 +20,10 @@ log = get_logger(__name__)
 # Groq API endpoint
 GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
 
-# Default system prompt with STRICT length constraints and few-shot example
-DEFAULT_SYSTEM_PROMPT = """Ты пишешь КОРОТКИЕ сопроводительные письма.
+# Default system prompt - letter body ONLY, no contacts/signature
+DEFAULT_SYSTEM_PROMPT = """Ты пишешь ТОЛЬКО тело сопроводительного письма (без подписи и контактов).
 
-ПРИМЕР (всего 450 символов с подписью):
+ПРИМЕР (только тело, без Telegram и подписи):
 ---
 Добрый день!
 
@@ -32,21 +32,17 @@ DEFAULT_SYSTEM_PROMPT = """Ты пишешь КОРОТКИЕ сопроводи
 Работал с похожими задачами в EPAM: мигрировал легаси на React. Уверен, что опыт поможет продукту.
 
 Готов обсудить детали.
-
-Telegram: @username
-С уважением,
-Иван
 ---
 
 СТРОГИЕ ПРАВИЛА:
-1. Тело письма: макс 350 символов (3-4 абзаца)
-2. Приветствие + вакансия (1 предл.)
-3. Связь навыков с требованиями (1-2 предл.)
-4. Призыв к действию (1 предл.)
-5. ДОЛЖНО БЫТЬ: "Telegram: @username" (отдельной строкой!)
-6. ДОЛЖНО БЫТЬ: "С уважением, [Имя]" (отдельной строкой!)
-7. Без общих фраз типа "я ответственный"
-8. Если не влезает — удали из середины, но сохрани Telegram и подпись"""
+1. Только 3-4 абзаца (приветствие, опыт, призыв)
+2. Макс 300 символов
+3. БЕЗ "Telegram: ..." в конце
+4. БЕЗ "С уважением, ..." в конце
+5. Без общих фраз типа "я ответственный"
+6. Конкретика: технологии из вакансии + твой опыт
+
+Контакты и подпись будут добавлены отдельно, не пиши их!"""
 
 
 async def generate_with_groq(
@@ -164,9 +160,9 @@ def _build_groq_prompt(
         "2. Упомяни вакансию и компанию",
         "3. Свяжи свои навыки с требованиями вакансии",
         "4. Будь конкретным — укажи технологии из вакансии",
-        "5. Максимум 4 абзаца",
-        f"6. Telegram: @{cfg.auth.telegram}" if cfg.auth.telegram else "",
-        f"7. Подпись: С уважением, {cfg.auth.name}" if cfg.auth.name else "7. Подпись: С уважением",
+        "5. Максимум 3 абзаца (приветствие, опыт, призыв)",
+        "6. НЕ добавляй Telegram — будет добавлен отдельно",
+        "7. НЕ добавляй подпись 'С уважением' — будет добавлена отдельно",
     ])
     
     return "\n".join(filter(None, parts))
@@ -261,43 +257,33 @@ def _smart_truncate(text: str, max_chars: int = 500) -> str:
 
 
 def _ensure_contacts(text: str, cfg) -> str:
-    """Ensure Telegram and name signature are in the letter.
+    """Append Telegram and name signature to the end of letter.
     
-    Also replaces placeholders like @username, Иван with real data.
+    Assumes AI generated only the body without contacts.
     """
     telegram = cfg.auth.telegram
     name = cfg.auth.name or (cfg.auth.email.split('@')[0] if cfg.auth.email else "")
     
-    # FORCE replace ANY telegram username with real one
+    # Clean up any accidental contacts AI might have added
+    lines = text.split('\n')
+    cleaned_lines = []
+    for line in lines:
+        lower = line.lower().strip()
+        # Skip lines that look like contacts (but keep the rest)
+        if lower.startswith('telegram:') or lower.startswith('с уважением') or lower.startswith('tel:'):
+            continue
+        # Skip standalone @usernames at the end
+        if line.strip().startswith('@') and len(line.strip()) < 30:
+            continue
+        cleaned_lines.append(line)
+    
+    text = '\n'.join(cleaned_lines).strip()
+    
+    # Add contacts at the end
     if telegram:
-        import re
-        # Replace @username patterns (any username after @)
-        text = re.sub(r'@[a-zA-Z0-9_]+', f'@{telegram}', text)
-        # Replace "Telegram: anything" with real telegram
-        text = re.sub(r'Telegram:\s*@?[a-zA-Z0-9_]+', f'Telegram: @{telegram}', text, flags=re.IGNORECASE)
-    
-    # FORCE replace ANY name in signature with real name
-    if name:
-        import re
-        # Replace "С уважением, Anything" with real name
-        text = re.sub(r'С уважением,\s*\n*.+', f'С уважением,\n{name}', text, flags=re.IGNORECASE)
-        # Also replace standalone name lines at the end
-        lines = text.split('\n')
-        # Check last 2 lines for name patterns
-        for i in range(max(0, len(lines)-3), len(lines)):
-            line = lines[i].strip()
-            # If line looks like a name (not empty, not telegram, not greeting)
-            if line and not line.lower().startswith('telegram') and not line.lower().startswith('добрый') and len(line) < 50:
-                if line != name and not line.startswith('@'):
-                    lines[i] = name
-        text = '\n'.join(lines)
-    
-    # If somehow still no telegram - add it
-    if telegram and f"@{telegram}" not in text:
         text += f"\n\nTelegram: @{telegram}"
     
-    # If somehow still no signature - add it
-    if name and name not in text:
+    if name:
         text += f"\n\nС уважением,\n{name}"
     
     return text
