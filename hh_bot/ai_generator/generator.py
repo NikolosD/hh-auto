@@ -23,17 +23,23 @@ OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 
 # Default system prompt for cover letter generation
 DEFAULT_SYSTEM_PROMPT = """Ты — эксперт по написанию сопроводительных писем для отклика на вакансии.
-Твоя задача — написать краткое, профессиональное и убедительное сопроводительное письмо на русском языке.
+Твоя задача — написать ПЕРСОНАЛИЗИРОВАННОЕ сопроводительное письмо на русском языке, которое показывает заинтересованность в конкретной вакансии.
 
-Правила:
-1. Письмо должно быть персонализированным — учитывай навыки кандидата и требования вакансии
-2. Максимум 200-300 слов (3-4 абзаца)
-3. Профессиональный, но дружелюбный тон
-4. Покажи, почему кандидат подходит именно на эту вакансию
-5. Упомяни 2-3 ключевых навыка из резюме, которые релевантны вакансии
-6. Закончи призывом к действию (готовность на собеседование)
+КЛЮЧЕВЫЕ ПРАВИЛА:
+1. АНАЛИЗИРУЙ описание вакансии — найди ключевые требования и технологии
+2. СВЯЗЫВАЙ навыки кандидата с требованиями вакансии явно (например: "В вашем стеке React/TypeScript — это мои основные инструменты последние 3 года")
+3. Покажи, что кандидат ПОНИМАЕТ чем занимается компания и какую задачу решает
+4. ИЗБЕГАЙ шаблонных фраз — каждое предложение должно относиться к этой конкретной вакансии
+5. Максимум 150-200 слов (3-4 коротких абзаца)
+6. Профессиональный, но не формальный тон — как будто пишешь реальному человеку
+7. Закончи готовностью к собеседованию
 
-Письмо должно быть готово к отправке — без шаблонных фраз вроде "[Вставить имя]"."""
+ЗАПРЕЩЕНО:
+- Общие фразы без привязки к вакансии ("у меня большой опыт", "я ответственный")
+- Копирование текста из резюме без адаптации под вакансию
+- Шаблонные конструкции которые подходят к любой вакансии
+
+Письмо должно создавать впечатление, что кандидат ВНИМАТЕЛЬНО изучил вакансию и целенаправленно откликается."""
 
 
 async def generate_ai_cover_letter(
@@ -197,16 +203,21 @@ def _build_user_prompt(
         "# ЗАДАЧА",
         "Напиши сопроводительное письмо для отклика на эту вакансию.",
         "",
-        "Требования к письму:",
-        "1. Начни с приветствия 'Добрый день!'",
-        "2. Упомяни интерес к вакансии и компании",
-        "3. Кратко опиши свой релевантный опыт (2-3 предложения)",
-        "4. НЕ используй заголовки типа 'О себе' внутри письма",
-        "5. Письмо должно быть компактным (5-7 предложений)",
-        "6. Используй одинарные переносы строк между абзацами",
-        "7. НЕ добавляй лишних пустых строк",
-        f"8. В конце обязательно укажи Telegram: @{cfg.auth.telegram if cfg.auth.telegram else '(указать при наличии)'}",
-        f"9. Закончи фразой 'С уважением, {cfg.auth.name}'",
+        "КРИТИЧЕСКИ ВАЖНЫЕ ТРЕБОВАНИЯ:",
+        "1. Проанализируй ТРЕБОВАНИЯ вакансии из описания выше",
+        "2. Найди 2-3 навыка кандидата, которые ПРЯМО соответствуют требованиям вакансии",
+        "3. ЯВНО укажи, почему кандидат подходит именно на эту вакансию (например: 'Вашим требованиям соответствует мой опыт работы с...')",
+        "4. Приведи КОНКРЕТНЫЙ пример из опыта, релевантный задачам вакансии",
+        "",
+        "Формат письма:",
+        "- Начни с приветствия 'Добрый день!'",
+        "- Покажи, что изучил вакансию: укажи что именно заинтересовало (технологии/задачи/продукт)",
+        "- Объясни, какой опыт кандидата поможет решить задачи компании",
+        "- НЕ используй общие фразы типа 'у меня есть опыт разработки' — указывай конкретные технологии из вакансии",
+        "- Письмо должно показывать, что это не массовая рассылка, а целевой отклик",
+        "- Максимум 4-5 абзацев, каждый по 1-2 предложения",
+        f"- В конце укажи Telegram: @{cfg.auth.telegram if cfg.auth.telegram else '(указать при наличии)'}",
+        f"- Закончи фразой 'С уважением, {cfg.auth.name}'",
     ])
     
     return "\n".join(parts)
@@ -267,27 +278,47 @@ def generate_fallback_cover_letter(
     resume: ResumeInfo,
     vacancy_title: str,
     company_name: str,
+    vacancy_description: Optional[str] = None,
 ) -> str:
     """Generate a simple fallback cover letter without AI."""
     from hh_bot.utils.config import get_config
     cfg = get_config()
     
     parts = ["Добрый день!"]
+    
+    # More personalized opening
     parts.append(f"Меня заинтересовала вакансия {vacancy_title} в вашей компании {company_name}.")
     
-    if resume.title:
-        parts.append(f"Моя текущая позиция: {resume.title}.")
-    
-    if resume.skills:
+    # Try to extract relevant skills from vacancy description if available
+    relevant_skills = []
+    if vacancy_description and resume.skills:
+        # Simple keyword matching
+        desc_lower = vacancy_description.lower()
         skills_parts = resume.skills.replace(",", "•").replace(";", "•").split("•")
-        skills_list = [s.strip() for s in skills_parts[:4] if s.strip()]
-        if skills_list:
-            parts.append(f"Мои ключевые навыки: {', '.join(skills_list)}.")
+        for skill in skills_parts:
+            skill_clean = skill.strip()
+            if skill_clean and skill_clean.lower() in desc_lower:
+                relevant_skills.append(skill_clean)
     
+    # If no matching skills found, use first few skills
+    if not relevant_skills and resume.skills:
+        skills_parts = resume.skills.replace(",", "•").replace(";", "•").split("•")
+        relevant_skills = [s.strip() for s in skills_parts[:3] if s.strip()]
+    
+    # Build experience paragraph
+    exp_parts = []
+    if resume.title:
+        exp_parts.append(f"Работаю на позиции {resume.title}")
+    if relevant_skills:
+        exp_parts.append(f"мой стек: {', '.join(relevant_skills[:4])}")
+    
+    if exp_parts:
+        parts.append(". ".join(exp_parts) + ".")
+    
+    # Add about section if available (1-2 sentences)
     if resume.about:
         about_clean = _clean_about_text(resume.about)
         if about_clean:
-            # Take only first 1-2 complete sentences (no cutoff mid-sentence)
             sentences = []
             current_len = 0
             for sent in about_clean.split('. '):
@@ -296,7 +327,7 @@ def generate_fallback_cover_letter(
                     continue
                 if not sent.endswith('.'):
                     sent += '.'
-                if current_len + len(sent) <= 200:
+                if current_len + len(sent) <= 150:
                     sentences.append(sent)
                     current_len += len(sent) + 1
                 else:

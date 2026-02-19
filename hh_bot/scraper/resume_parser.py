@@ -179,7 +179,7 @@ async def generate_cover_letter(
     
     # Fallback to template-based generation
     log.info("Generating fallback cover letter...")
-    letter = generate_fallback_cover_letter(resume, vacancy_title, company_name)
+    letter = generate_fallback_cover_letter(resume, vacancy_title, company_name, vacancy_description)
     log.info(f"Fallback letter generated: {len(letter)} chars")
     return letter
 
@@ -195,94 +195,7 @@ def generate_cover_letter_sync(
         return asyncio.run(generate_cover_letter(resume, vacancy_title, company_name))
     except RuntimeError:
         # If already in async context, use fallback
-        return generate_fallback_cover_letter(resume, vacancy_title, company_name)
+        return generate_fallback_cover_letter(resume, vacancy_title, company_name, None)
 
 
-def generate_fallback_cover_letter(
-    resume: ResumeInfo,
-    vacancy_title: str,
-    company_name: str,
-) -> str:
-    """Generate a simple cover letter without AI using templates."""
-    if not resume.title:
-        # Fallback to simple template if no resume info
-        return (
-            f"Добрый день!\n\n"
-            f"Меня заинтересовала вакансия {vacancy_title} в компании {company_name}. "
-            f"Готов обсудить детали."
-        )
-    
-    # Extract key skills for matching
-    skills_list = []
-    if resume.skills:
-        # Take first 3-5 skills
-        skills_parts = resume.skills.replace(",", "•").replace(";", "•").split("•")
-        skills_list = [s.strip() for s in skills_parts[:5] if s.strip()]
-    
-    skills_text = ", ".join(skills_list) if skills_list else "своих навыках"
-    
-    # Build personalized letter
-    letter_parts = [
-        f"Добрый день!",
-        "",
-        f"Меня заинтересовала вакансия {vacancy_title} в вашей компании {company_name}.",
-    ]
-    
-    # Add about section if available - only complete sentences
-    if resume.about:
-        about_clean = _clean_about_text(resume.about)
-        if about_clean:
-            # Take only first 1-2 complete sentences (up to ~150 chars)
-            sentences = []
-            current_len = 0
-            for sent in about_clean.split('. '):
-                sent = sent.strip()
-                if not sent:
-                    continue
-                # Add period back if missing
-                if not sent.endswith('.'):
-                    sent += '.'
-                if current_len + len(sent) <= 180:
-                    sentences.append(sent)
-                    current_len += len(sent) + 1  # +1 for space
-                else:
-                    break
-            
-            if sentences:
-                about_text = ' '.join(sentences)
-                letter_parts.extend([
-                    "",
-                    f"{about_text}",
-                ])
-    
-    # Add skills mention
-    if skills_list:
-        letter_parts.extend([
-            "",
-            f"Мои ключевые навыки: {skills_text}.",
-        ])
-    
-    # Add position relevance
-    if resume.title:
-        letter_parts.extend([
-            "",
-            f"Моя текущая позиция: {resume.title}.",
-        ])
-    
-    # Closing
-    letter_parts.extend([
-        "",
-        "Готов обсудить детали и ответить на ваши вопросы.",
-        "",
-        "С уважением,",
-    ])
-    
-    # Add name if provided in config
-    if cfg.auth.name:
-        letter_parts.append(cfg.auth.name)
-    elif cfg.auth.email:
-        # Use email username as fallback
-        email_name = cfg.auth.email.split('@')[0]
-        letter_parts.append(email_name)
-    
-    return "\n".join(letter_parts)
+
