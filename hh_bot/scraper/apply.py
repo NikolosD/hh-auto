@@ -34,6 +34,10 @@ async def apply_to_vacancy(
     Returns True on success, False if skipped/failed gracefully.
     Raises ApplyError on unrecoverable error.
     """
+    log.info(f"=== APPLY DEBUG === vacancy_id={details.vacancy_id}")
+    log.info(f"resume_info: {resume_info}")
+    log.info(f"resume_info.title: {resume_info.title if resume_info else 'None'}")
+    
     # Find the apply button
     apply_btn = page.locator(
         "[data-qa='vacancy-response-link-top'], "
@@ -51,26 +55,46 @@ async def apply_to_vacancy(
     await sleep_after_submit()
 
     # Check for location warning modal first
-    await _handle_location_warning_modal(page)
+    location_handled = await _handle_location_warning_modal(page)
+    if location_handled:
+        log.info("Location warning was handled, waiting for form...")
+        await asyncio.sleep(2)  # Даём время на появление формы
     
     # Check for photo suggestion modal
     await _handle_photo_suggestion_modal(page)
     
-    # Check if a response modal appeared
-    modal = page.locator(
-        "[data-qa='vacancy-response-popup'], "
-        ".vacancy-response-popup, "
-        "[class*='response-popup'], "
-        "[class*='modal'][class*='response']"
-    )
-
-    # Wait briefly for modal
-    try:
-        await modal.first.wait_for(state="visible", timeout=5000)
-        log.info("Response modal appeared")
-        return await _handle_response_modal(page, details, preferred_resume_title, resume_info)
-    except PatchrightTimeout:
-        pass
+    # Check if a response modal appeared (with multiple possible selectors)
+    modal_selectors = [
+        "[data-qa='vacancy-response-popup']",
+        "[data-qa='vacancy-response-popup-form']",
+        ".vacancy-response-popup",
+        "[class*='response-popup']",
+        "[class*='modal'][class*='response']",
+        "div[class*='bloko-modal']",  # Общий селектор модалок hh.ru
+        "div[data-qa='bloko-modal']",
+        "div:has-text('Отклик на вакансию'):above(form)",
+    ]
+    
+    modal = None
+    for selector in modal_selectors:
+        try:
+            loc = page.locator(selector).first
+            if await loc.count() > 0 and await loc.is_visible():
+                modal = loc
+                log.info(f"Found response modal with selector: {selector}")
+                break
+        except Exception:
+            pass
+    
+    if modal:
+        try:
+            await modal.wait_for(state="visible", timeout=3000)
+            log.info("Response modal is visible, handling...")
+            return await _handle_response_modal(page, details, preferred_resume_title, resume_info)
+        except PatchrightTimeout:
+            log.warning("Modal found but not visible after 3s")
+    else:
+        log.info("No response modal found with any selector")
 
     # No modal — check if we were redirected to a success page or inline form
     await sleep_page_load()
@@ -176,6 +200,8 @@ async def _handle_response_modal(
     resume_info: Optional[ResumeInfo] = None,
 ) -> bool:
     """Handle the apply modal dialog."""
+    log.info(f"=== HANDLE_RESPONSE_MODAL === resume_info={resume_info is not None}")
+    
     # First check for location warning modal
     await _handle_location_warning_modal(page)
     
@@ -186,6 +212,7 @@ async def _handle_response_modal(
     await _select_resume(page, preferred_resume_title)
 
     # Handle cover letter
+    log.info("Calling _fill_cover_letter...")
     await _fill_cover_letter(page, details, resume_info)
 
     # Find and click submit button
@@ -283,32 +310,133 @@ async def _fill_cover_letter(page: Page, details: VacancyDetails, resume_info: O
     """Fill in cover letter if enabled and field is present."""
     cfg = get_config()
     cl_cfg = cfg.cover_letter
+    
+    log.info("=== COVER LETTER DEBUG ===")
+    log.info(f"cover_letter.enabled: {cl_cfg.enabled}")
+    log.info(f"cover_letter.ai.enabled: {cl_cfg.ai.enabled}")
+    log.info(f"use_ai_cover_letter: {cfg.use_ai_cover_letter}")
+    log.info(f"resume_info: {resume_info}")
+    log.info(f"resume_info.title: {resume_info.title if resume_info else 'None'}")
 
-    letter_area_loc = page.locator(
-        "[data-qa='vacancy-response-letter-text'], "
-        "textarea[name='text'], "
-        "textarea[placeholder*='письм']"
-    )
+    # Ищем поле для сопроводительного письма
+    letter_area_loc = None
+    
+    # Сначала проверяем, есть ли признаки формы отклика (кнопка отправки письма)
+    response_indicators = [
+        "[data-qa='vacancy-response-letter-submit']",
+        "[data-qa='vacancy-response-submit-popup']", 
+        "button:has-text('Отправить')",
+        "button:has-text('Откликнуться')",
+    ]
+    
+    is_response_form = False
+    for indicator in response_indicators:
+        try:
+            loc = page.locator(indicator).first
+            if await loc.count() > 0 and await loc.is_visible():
+                is_response_form = True
+                log.info(f"Response form detected via: {indicator}")
+                break
+        except:
+            pass
+    
+    # Если это форма отклика - ищем любой видимый textarea
+    if is_response_form:
+        log.info("Looking for textarea in response form...")
+        all_textareas = page.locator("textarea")
+        count = await all_textareas.count()
+        log.info(f"Found {count} textarea(s) on page")
+        
+        for i in range(count):
+            try:
+                textarea = all_textareas.nth(i)
+                if await textarea.is_visible():
+                    letter_area_loc = textarea
+                    log.info(f"Using visible textarea #{i}")
+                    break
+            except:
+                continue
+    
+    # Если не нашли, ищем по стандартным селекторам
+    if letter_area_loc is None:
+        letter_selectors = [
+            "[data-qa='vacancy-response-letter-text']",
+            "textarea[data-qa='vacancy-response-letter-text']",
+            "textarea[name='text']",
+            "textarea[placeholder*='опроводительное']",
+            "textarea[placeholder*='исьм']",
+            "textarea[placeholder*='Письм']",
+            "label:has-text('Сопроводительное письмо') ~ textarea",
+            "label:has-text('опроводительное') ~ textarea",
+        ]
+        
+        for selector in letter_selectors:
+            try:
+                loc = page.locator(selector).first
+                if await loc.count() > 0:
+                    is_visible = await loc.is_visible()
+                    if is_visible:
+                        letter_area_loc = loc
+                        log.info(f"Found letter field with selector: {selector}")
+                        break
+            except Exception as e:
+                log.debug(f"Selector {selector} failed: {e}")
+    
+    # Если всё ещё не нашли, но есть кнопка отправки письма - ищем любой textarea
+    if letter_area_loc is None:
+        submit_btn = page.locator("[data-qa='vacancy-response-letter-submit']")
+        if await submit_btn.count() > 0 and await submit_btn.is_visible():
+            log.info("Found submit button, looking for any textarea...")
+            # Ищем любой видимый textarea на странице
+            all_textareas = page.locator("textarea")
+            count = await all_textareas.count()
+            for i in range(count):
+                ta = all_textareas.nth(i)
+                if await ta.is_visible():
+                    letter_area_loc = ta
+                    log.info(f"Using textarea #{i} as letter field")
+                    break
+    
+    if letter_area_loc is None:
+        letter_area_loc = page.locator("[data-qa='vacancy-response-letter-text']")
+    
+    field_count = await letter_area_loc.count()
+    log.info(f"Found {field_count} letter field(s) on page")
 
-    if await letter_area_loc.count() == 0:
+    if field_count == 0:
+        log.warning("❌ No cover letter field found on page - skipping")
         return  # No letter field present
 
     if not cl_cfg.enabled:
-        log.debug("Cover letter disabled, skipping")
+        log.warning("❌ Cover letter disabled in config - skipping")
         return
 
     # Generate personalized cover letter if resume info available
+    log.info("Generating cover letter...")
+    log.info(f"  has_resume: {bool(resume_info and resume_info.title)}")
+    log.info(f"  use_ai: {cfg.use_ai_cover_letter}")
+    
     if resume_info and resume_info.title:
-        text = generate_cover_letter(resume_info, details.title, details.employer)
-        log.info("Generated personalized cover letter from resume")
+        log.info(f"  resume.title: {resume_info.title}")
+        log.info(f"  vacancy.title: {details.title}")
+        log.info(f"  vacancy.employer: {details.employer}")
+        log.info(f"  vacancy.description: {details.description[:100] if details.description else 'None'}...")
+        
+        text = await generate_cover_letter(resume_info, details.title, details.employer, details.description)
+        log.info(f"✅ Generated cover letter: {len(text)} chars")
+        log.info(f"   AI used: {cfg.use_ai_cover_letter}")
+        log.info(f"   Preview: {text[:100]}...")
     else:
         # Use template from config
+        log.warning("⚠️  No resume info, using template")
         text = cl_cfg.template.format(
             vacancy_name=details.title,
             company_name=details.employer,
         )
+        log.info(f"Template letter: {len(text)} chars")
 
     letter_area = letter_area_loc.first
-    log.info("Filling cover letter", chars=len(text))
+    log.info(f"Filling cover letter field with {len(text)} chars...")
     await human_type_locator(page, letter_area, text)
     await sleep_micro()
+    log.info("✅ Cover letter filled successfully")

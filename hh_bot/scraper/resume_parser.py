@@ -110,10 +110,100 @@ async def _parse_resume_page(page: Page) -> ResumeInfo:
     )
 
 
-def generate_cover_letter(resume: ResumeInfo, vacancy_title: str, company_name: str) -> str:
+async def generate_cover_letter(
+    resume: ResumeInfo,
+    vacancy_title: str,
+    company_name: str,
+    vacancy_description: Optional[str] = None,
+) -> str:
     """
-    Generate a personalized cover letter based on resume and vacancy info.
+    Generate a cover letter based on resume and vacancy info.
+    
+    If AI is enabled in config, uses AI generation.
+    Otherwise, falls back to template-based generation.
     """
+    from hh_bot.utils.config import get_config
+    from hh_bot.ai_generator.generator import (
+        generate_ai_cover_letter,
+        generate_fallback_cover_letter,
+    )
+    
+    cfg = get_config()
+    
+    log.info("=== GENERATE_COVER_LETTER DEBUG ===")
+    log.info(f"use_ai_cover_letter: {cfg.use_ai_cover_letter}")
+    log.info(f"cover_letter.enabled: {cfg.cover_letter.enabled}")
+    log.info(f"cover_letter.ai.enabled: {cfg.cover_letter.ai.enabled}")
+    
+    # Try AI generation if enabled
+    if cfg.use_ai_cover_letter:
+        log.info("AI generation is enabled, trying...")
+        from hh_bot.ai_generator.models import AIGeneratorConfig
+        from hh_bot.scraper.vacancy import VacancyDetails
+        
+        ai_config = AIGeneratorConfig(
+            enabled=cfg.cover_letter.ai.enabled,
+            api_key=cfg.cover_letter.ai.api_key,
+            model=cfg.cover_letter.ai.model,
+            max_tokens=cfg.cover_letter.ai.max_tokens,
+            temperature=cfg.cover_letter.ai.temperature,
+            custom_prompt=cfg.cover_letter.ai.custom_prompt or None,
+        )
+        
+        log.info(f"AI config: model={ai_config.model}, api_key={'***' if ai_config.api_key else '(none)'}")
+        
+        # Create minimal vacancy details for AI
+        vacancy = VacancyDetails(
+            vacancy_id="",
+            title=vacancy_title,
+            employer=company_name,
+            url="",
+            description=vacancy_description or "",
+        )
+        
+        log.info("Calling generate_ai_cover_letter...")
+        ai_letter = await generate_ai_cover_letter(
+            resume=resume,
+            vacancy=vacancy,
+            vacancy_description=vacancy_description,
+            config=ai_config,
+        )
+        
+        if ai_letter:
+            log.info(f"✅ AI generated letter: {len(ai_letter)} chars")
+            return ai_letter
+        
+        log.warning("⚠️  AI generation returned None, using fallback")
+    else:
+        log.info("AI generation disabled, using fallback")
+    
+    # Fallback to template-based generation
+    log.info("Generating fallback cover letter...")
+    letter = generate_fallback_cover_letter(resume, vacancy_title, company_name)
+    log.info(f"Fallback letter generated: {len(letter)} chars")
+    return letter
+
+
+def generate_cover_letter_sync(
+    resume: ResumeInfo,
+    vacancy_title: str,
+    company_name: str,
+) -> str:
+    """Synchronous version for backward compatibility."""
+    import asyncio
+    try:
+        return asyncio.run(generate_cover_letter(resume, vacancy_title, company_name))
+    except RuntimeError:
+        # If already in async context, use fallback
+        return generate_fallback_cover_letter(resume, vacancy_title, company_name)
+
+
+def generate_fallback_cover_letter(
+    resume: ResumeInfo,
+    vacancy_title: str,
+    company_name: str,
+) -> str:
+    """Generate a simple cover letter without AI using templates."""
     if not resume.title:
         # Fallback to simple template if no resume info
         return (

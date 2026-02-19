@@ -74,6 +74,7 @@ def login(ctx: click.Context) -> None:
 @click.option("--cover-letter/--no-cover-letter", default=None, help="Добавлять сопроводительное письмо")
 @click.option("--headless", is_flag=True, help="Запускать браузер в фоновом режиме")
 @click.option("--dry-run", is_flag=True, help="Только парсинг без реальных откликов")
+@click.option("--log-level", "-l", default="INFO", help="Уровень логирования (DEBUG/INFO/WARNING/ERROR)")
 @click.pass_context
 def run(
     ctx: click.Context,
@@ -86,6 +87,7 @@ def run(
     cover_letter: bool | None,
     headless: bool,
     dry_run: bool,
+    log_level: str,
 ) -> None:
     """Запустить сессию автоматических откликов."""
     # Собираем CLI-опции для переопределения конфига
@@ -104,6 +106,9 @@ def run(
         cli_opts["cover_letter.enabled"] = cover_letter
     if headless:
         cli_opts["browser.headless"] = True
+    
+    # Настройка логирования
+    setup_logging(log_level)
     
     cfg = _load_config(ctx.obj["config_path"], cli_opts)
 

@@ -27,6 +27,20 @@ cover_letter:
   template: |
     Добрый день! Меня заинтересовала вакансия {vacancy_name} в компании {company_name}.
     Готов обсудить детали.
+  
+  # AI-генерация сопроводительных писем (через OpenRouter - бесплатно!)
+  ai:
+    enabled: false                    # true = использовать AI для генерации писем
+    api_key: ""                       # API ключ OpenRouter (опционально, для платных моделей)
+    # Бесплатные модели (работают без API ключа):
+    #   - deepseek/deepseek-chat:free       # DeepSeek V3 (рекомендуется)
+    #   - mistralai/mistral-7b-instruct:free # Mistral 7B
+    #   - meta-llama/llama-3-8b-instruct:free # Llama 3 8B
+    #   - google/gemma-2-9b-it:free         # Gemma 2 9B
+    model: "deepseek/deepseek-chat:free"
+    max_tokens: 500
+    temperature: 0.7
+    custom_prompt: ""                 # Кастомный системный промпт (если пусто - используется дефолтный)
 
 resume:
   preferred_title: ""  # часть названия резюме, пусто = первое

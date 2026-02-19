@@ -37,6 +37,15 @@ class FiltersConfig(BaseModel):
     blocked_employers: List[str] = []
 
 
+class AIGeneratorConfig(BaseModel):
+    enabled: bool = False  # Использовать AI для генерации писем
+    api_key: str = ""  # OpenRouter API ключ (опционально)
+    model: str = "deepseek/deepseek-chat:free"  # Модель (бесплатные: deepseek/deepseek-chat:free, mistralai/mistral-7b-instruct:free)
+    max_tokens: int = 500
+    temperature: float = 0.7
+    custom_prompt: str = ""  # Кастомный системный промпт (опционально)
+
+
 class CoverLetterConfig(BaseModel):
     enabled: bool = False
     always_include: bool = False
@@ -44,6 +53,7 @@ class CoverLetterConfig(BaseModel):
         "Добрый день! Меня заинтересовала вакансия {vacancy_name} в компании {company_name}.\n"
         "Готов обсудить детали."
     )
+    ai: AIGeneratorConfig = AIGeneratorConfig()  # AI-генерация писем
 
 
 class ResumeConfig(BaseModel):
@@ -58,6 +68,11 @@ class Config(BaseModel):
     filters: FiltersConfig = FiltersConfig()
     cover_letter: CoverLetterConfig = CoverLetterConfig()
     resume: ResumeConfig = ResumeConfig()
+    
+    @property
+    def use_ai_cover_letter(self) -> bool:
+        """Check if AI cover letter generation is enabled."""
+        return self.cover_letter.enabled and self.cover_letter.ai.enabled
 
 
 _config: Optional[Config] = None

@@ -18,6 +18,7 @@ class VacancyDetails:
     title: str
     employer: str
     url: str
+    description: str = ""  # Описание вакансии для AI генерации
     has_test: bool = False
     response_letter_required: bool = False
     already_applied: bool = False
@@ -38,6 +39,7 @@ async def fetch_vacancy_details(page: Page, url: str, vacancy_id: str) -> Vacanc
 
     title = await _get_title(page)
     employer = await _get_employer(page)
+    description = await _get_description(page)
     has_test = await _check_has_test(page)
     letter_required = await _check_letter_required(page)
     already_applied = await _check_already_applied(page)
@@ -49,6 +51,7 @@ async def fetch_vacancy_details(page: Page, url: str, vacancy_id: str) -> Vacanc
         title=title,
         employer=employer,
         url=url,
+        description=description,
         has_test=has_test,
         response_letter_required=letter_required,
         already_applied=already_applied,
@@ -78,6 +81,29 @@ async def _get_employer(page: Page) -> str:
     el = page.locator("[data-qa='vacancy-company-name'], [data-qa='bloko-header-2']")
     if await el.count() > 0:
         return (await el.first.inner_text()).strip()
+    return ""
+
+
+async def _get_description(page: Page) -> str:
+    """Extract vacancy description text."""
+    # Try multiple selectors for description
+    selectors = [
+        "[data-qa='vacancy-description']",
+        ".vacancy-description",
+        "[data-qa='job-description']",
+        "[class*='description']",
+    ]
+    for sel in selectors:
+        try:
+            el = page.locator(sel).first
+            if await el.count() > 0:
+                text = await el.inner_text()
+                # Clean up the text
+                text = text.strip()
+                # Limit length for AI prompt
+                return text[:2000] if len(text) > 2000 else text
+        except Exception:
+            pass
     return ""
 
 
