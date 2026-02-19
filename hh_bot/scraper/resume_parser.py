@@ -228,17 +228,32 @@ def generate_fallback_cover_letter(
         f"Меня заинтересовала вакансия {vacancy_title} в вашей компании {company_name}.",
     ]
     
-    # Add about section if available
+    # Add about section if available - only complete sentences
     if resume.about:
-        # Cut at word boundary without ellipsis
-        if len(resume.about) > 150:
-            about_short = resume.about[:150].rsplit(' ', 1)[0]
-        else:
-            about_short = resume.about
-        letter_parts.extend([
-            "",
-            f"{about_short}",
-        ])
+        about_clean = _clean_about_text(resume.about)
+        if about_clean:
+            # Take only first 1-2 complete sentences (up to ~150 chars)
+            sentences = []
+            current_len = 0
+            for sent in about_clean.split('. '):
+                sent = sent.strip()
+                if not sent:
+                    continue
+                # Add period back if missing
+                if not sent.endswith('.'):
+                    sent += '.'
+                if current_len + len(sent) <= 180:
+                    sentences.append(sent)
+                    current_len += len(sent) + 1  # +1 for space
+                else:
+                    break
+            
+            if sentences:
+                about_text = ' '.join(sentences)
+                letter_parts.extend([
+                    "",
+                    f"{about_text}",
+                ])
     
     # Add skills mention
     if skills_list:

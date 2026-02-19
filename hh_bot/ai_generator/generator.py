@@ -287,12 +287,22 @@ def generate_fallback_cover_letter(
     if resume.about:
         about_clean = _clean_about_text(resume.about)
         if about_clean:
-            # Limit length without ellipsis, or split into separate paragraph
-            if len(about_clean) > 200:
-                about_short = about_clean[:200].rsplit(' ', 1)[0]  # Cut at word boundary
-                parts.append(about_short)
-            else:
-                parts.append(about_clean)
+            # Take only first 1-2 complete sentences (no cutoff mid-sentence)
+            sentences = []
+            current_len = 0
+            for sent in about_clean.split('. '):
+                sent = sent.strip()
+                if not sent:
+                    continue
+                if not sent.endswith('.'):
+                    sent += '.'
+                if current_len + len(sent) <= 200:
+                    sentences.append(sent)
+                    current_len += len(sent) + 1
+                else:
+                    break
+            if sentences:
+                parts.append(' '.join(sentences))
     
     parts.append("Готов обсудить детали и ответить на ваши вопросы.")
     
