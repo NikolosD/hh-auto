@@ -153,6 +153,9 @@ def _build_user_prompt(
     vacancy_description: Optional[str] = None,
 ) -> str:
     """Build user prompt for AI."""
+    from hh_bot.utils.config import get_config
+    cfg = get_config()
+    
     parts = [
         "# ДАННЫЕ КАНДИДАТА",
         f"## Желаемая позиция:\n{resume.title or 'Не указана'}"
@@ -167,6 +170,10 @@ def _build_user_prompt(
     if resume.experience:
         exp_short = resume.experience[:500] + "..." if len(resume.experience) > 500 else resume.experience
         parts.append(f"## Опыт работы:\n{exp_short}")
+    
+    # Add Telegram for contact
+    if cfg.auth.telegram:
+        parts.append(f"## Контакт:\nTelegram: @{cfg.auth.telegram}")
     
     parts.extend([
         "",
@@ -185,6 +192,9 @@ def _build_user_prompt(
         "Напиши сопроводительное письмо для отклика на эту вакансию.",
         "Письмо должно быть на русском языке.",
     ])
+    
+    if cfg.auth.telegram:
+        parts.append(f"В конце письма обязательно укажи Telegram для связи: @{cfg.auth.telegram}")
     
     return "\n\n".join(parts)
 
@@ -218,6 +228,9 @@ def generate_fallback_cover_letter(
     company_name: str,
 ) -> str:
     """Generate a simple fallback cover letter without AI."""
+    from hh_bot.utils.config import get_config
+    cfg = get_config()
+    
     parts = ["Добрый день!"]
     
     if resume.title:
@@ -237,6 +250,11 @@ def generate_fallback_cover_letter(
         parts.append(f"\n{about_short}")
     
     parts.append("\nГотов обсудить детали и ответить на ваши вопросы.")
+    
+    # Add Telegram if provided
+    if cfg.auth.telegram:
+        parts.append(f"\nTelegram: @{cfg.auth.telegram}")
+    
     parts.append("\nС уважением")
     
     return "\n".join(parts)

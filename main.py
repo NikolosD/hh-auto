@@ -129,14 +129,50 @@ def run(
     
     cfg = _load_config(ctx.obj["config_path"], cli_opts)
 
-    # Get query from config or prompt
+    # === ИНТЕРАКТИВНЫЙ ВВОД ДАННЫХ ===
+    click.echo("\n" + "=" * 50)
+    click.echo("🤖 Настройка сессии откликов")
+    click.echo("=" * 50)
+    
+    # 1. Поисковый запрос
     if not query:
         query = cfg.search.query
     if not query:
-        query = click.prompt("Введите поисковый запрос")
+        query = click.prompt("🔍 Введите поисковый запрос (например: Python разработчик)")
     if not query.strip():
-        click.echo("Поисковый запрос не может быть пустым.", err=True)
+        click.echo("❌ Поисковый запрос не может быть пустым.", err=True)
         sys.exit(1)
+    click.echo(f"✅ Запрос: {query}")
+    
+    # 2. Email для входа (если не залогинены)
+    email = cfg.auth.email
+    if not email:
+        email = click.prompt("📧 Введите email для входа в hh.ru")
+        if email:
+            # Сохраняем во временном конфиге для сессии
+            cli_opts["auth.email"] = email
+            cfg = _load_config(ctx.obj["config_path"], cli_opts)
+    
+    # 3. Telegram для сопроводительных писем
+    telegram = click.prompt(
+        "📱 Введите Telegram для сопроводительных писем (опционально)",
+        default="",
+        show_default=False
+    )
+    if telegram:
+        # Очищаем от @ и https://t.me/
+        telegram = telegram.strip()
+        if telegram.startswith("https://t.me/"):
+            telegram = telegram.replace("https://t.me/", "")
+        elif telegram.startswith("t.me/"):
+            telegram = telegram.replace("t.me/", "")
+        if telegram.startswith("@"):
+            telegram = telegram[1:]
+        cli_opts["auth.telegram"] = telegram
+        cfg = _load_config(ctx.obj["config_path"], cli_opts)
+        click.echo(f"✅ Telegram: @{telegram}")
+    
+    click.echo("=" * 50 + "\n")
 
     if dry_run:
         click.echo(f"[DRY RUN] Поиск: '{query}' (отклики не отправляются)")
