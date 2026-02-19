@@ -64,6 +64,9 @@ async def generate_with_groq(
         return None
     
     try:
+        from hh_bot.utils.config import get_config
+        cfg = get_config()
+        
         # Build prompt
         user_prompt = _build_groq_prompt(resume, vacancy, vacancy_description)
         
@@ -100,9 +103,11 @@ async def generate_with_groq(
                     if "choices" in data and len(data["choices"]) > 0:
                         cover_letter = data["choices"][0]["message"]["content"].strip()
                         log.info(f"✅ Groq generated: {len(cover_letter)} chars")
-                        # Clean and HARD truncate to 500 chars max
+                        # Clean and HARD truncate to 700 chars max (to fit Telegram)
                         cover_letter = _clean_cover_letter(cover_letter)
-                        cover_letter = _hard_truncate(cover_letter, max_chars=500)
+                        cover_letter = _hard_truncate(cover_letter, max_chars=700)
+                        # Ensure Telegram is in the letter
+                        cover_letter = _ensure_contacts(cover_letter, cfg)
                         log.info(f"✅ After truncate: {len(cover_letter)} chars")
                         return cover_letter
                 
@@ -186,7 +191,7 @@ def _clean_cover_letter(text: str) -> str:
     return text
 
 
-def _hard_truncate(text: str, max_chars: int = 500) -> str:
+def _hard_truncate(text: str, max_chars: int = 700) -> str:
     """Hard truncate text to max_chars, preserving sentence boundaries.
     
     This FORCEFULLY limits letter length regardless of AI output.
@@ -215,10 +220,21 @@ def _hard_truncate(text: str, max_chars: int = 500) -> str:
     
     log.warning(f"Letter HARD truncated from {len(text)} to {len(truncated)} chars")
     return truncated.strip()
+
+
+def _ensure_contacts(text: str, cfg) -> str:
+    """Ensure Telegram and name signature are in the letter."""
+    # Check if Telegram is already there
+    has_telegram = "telegram" in text.lower() or "@" in text
     
-    text = "\n".join(cleaned_lines).strip()
+    # Add Telegram if missing and configured
+    if not has_telegram and cfg.auth.telegram:
+        text += f"\n\nTelegram: @{cfg.auth.telegram}"
     
-    if not any(text.lower().startswith(g) for g in ["добрый", "здравствуйте", "уважаемый"]):
-        text = f"Добрый день!\n\n{text}"
+    # Add name signature if missing
+    if "с уважением" not in text.lower():
+        name = cfg.auth.name or cfg.auth.email.split('@')[0] if cfg.auth.email else ""
+        if name:
+            text += f"\n\nС уважением,\n{name}"
     
     return text
