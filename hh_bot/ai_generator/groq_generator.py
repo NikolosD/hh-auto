@@ -21,31 +21,32 @@ log = get_logger(__name__)
 GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
 
 # Default system prompt with STRICT length constraints and few-shot example
-DEFAULT_SYSTEM_PROMPT = """Ты пишешь КОРОТКИЕ сопроводительные письма (макс 500 символов).
+DEFAULT_SYSTEM_PROMPT = """Ты пишешь КОРОТКИЕ сопроводительные письма.
 
-ПРИМЕР правильного письма (497 символов):
+ПРИМЕР (всего 450 символов с подписью):
 ---
 Добрый день!
 
-Меня заинтересовала вакансия Frontend Developer в вашей компании. В вашем стеке React/TypeScript — это мои основные инструменты последние 3 года.
+Меня заинтересовала вакансия Frontend Developer в вашей компании. В вашем стеке React/TypeScript — мои основные инструменты последние 3 года.
 
-Работал с похожими задачами в EPAM: мигрировал легаси на React, внедрял accessibility. Уверен, что этот опыт поможет вашему продукту.
+Работал с похожими задачами в EPAM: мигрировал легаси на React. Уверен, что опыт поможет продукту.
 
-Готов обсудить детали на собеседовании.
+Готов обсудить детали.
 
 Telegram: @username
 С уважением,
 Иван
 ---
 
-ТВОИ ПРАВИЛА:
-1. МАКСИМУМ 500 символов (строго!)
-2. Ровно 4 абзаца: приветствие, опыт, релевантность, призыв
-3. Каждый абзац: 1-2 коротких предложения
-4. Никаких общих фраз типа "я ответственный"
-5. Конкретика: технологии из вакансии + твой опыт
-
-Если не умещаешься — удали лишнее, но уложись в 500 символов."""
+СТРОГИЕ ПРАВИЛА:
+1. Тело письма: макс 350 символов (3-4 абзаца)
+2. Приветствие + вакансия (1 предл.)
+3. Связь навыков с требованиями (1-2 предл.)
+4. Призыв к действию (1 предл.)
+5. ДОЛЖНО БЫТЬ: "Telegram: @username" (отдельной строкой!)
+6. ДОЛЖНО БЫТЬ: "С уважением, [Имя]" (отдельной строкой!)
+7. Без общих фраз типа "я ответственный"
+8. Если не влезает — удали из середины, но сохрани Telegram и подпись"""
 
 
 async def generate_with_groq(
@@ -89,8 +90,8 @@ async def generate_with_groq(
                     {"role": "system", "content": config.custom_prompt or DEFAULT_SYSTEM_PROMPT},
                     {"role": "user", "content": user_prompt}
                 ],
-                "max_tokens": 300,  # Limit tokens to force short output
-                "temperature": 0.5,  # Lower temperature for more focused output
+                "max_tokens": 250,  # Hard limit to ~400-500 chars output
+                "temperature": 0.3,  # Low temperature for concise output
             }
             
             log.info(f"Trying Groq model: {model}")
@@ -103,11 +104,12 @@ async def generate_with_groq(
                     if "choices" in data and len(data["choices"]) > 0:
                         cover_letter = data["choices"][0]["message"]["content"].strip()
                         log.info(f"✅ Groq generated: {len(cover_letter)} chars")
-                        # Clean and HARD truncate to 700 chars max (to fit Telegram)
+                        # Clean, ensure contacts, then truncate to 500 chars
                         cover_letter = _clean_cover_letter(cover_letter)
-                        cover_letter = _hard_truncate(cover_letter, max_chars=700)
-                        # Ensure Telegram is in the letter
+                        # Add contacts BEFORE truncation so they have priority
                         cover_letter = _ensure_contacts(cover_letter, cfg)
+                        # Truncate but keep contacts visible
+                        cover_letter = _smart_truncate(cover_letter, max_chars=500)
                         log.info(f"✅ After truncate: {len(cover_letter)} chars")
                         return cover_letter
                 
@@ -191,35 +193,71 @@ def _clean_cover_letter(text: str) -> str:
     return text
 
 
-def _hard_truncate(text: str, max_chars: int = 700) -> str:
-    """Hard truncate text to max_chars, preserving sentence boundaries.
+def _smart_truncate(text: str, max_chars: int = 500) -> str:
+    """Smart truncate that keeps contacts (last 2 paragraphs) visible.
     
-    This FORCEFULLY limits letter length regardless of AI output.
+    Priority: keep Telegram and signature, truncate body if needed.
     """
     if len(text) <= max_chars:
         return text
     
-    # Find best cut point
-    truncated = text[:max_chars]
+    paragraphs = [p.strip() for p in text.split('\n\n') if p.strip()]
     
-    # Try to end at sentence boundary
-    for sep in ['.\n', '!\n', '?\n', '. ', '! ', '? ']:
-        last_end = truncated.rfind(sep)
-        if last_end > max_chars * 0.6:  # At least 60% of max
-            truncated = truncated[:last_end + 1]
-            break
+    # Identify contact paragraphs (last 1-2 paragraphs usually)
+    contact_markers = ['telegram', 'с уважением', 'телеграм', '@', 'tel:', 'phone:']
+    contact_paragraphs = []
+    body_paragraphs = []
     
-    # Remove incomplete last paragraph if any
-    paragraphs = [p.strip() for p in truncated.split('\n\n') if p.strip()]
-    if len(paragraphs) > 1:
-        # Check if last paragraph is incomplete (no ending punctuation)
-        last_p = paragraphs[-1]
-        if not last_p.endswith(('.', '!', '?')):
-            paragraphs = paragraphs[:-1]
-            truncated = '\n\n'.join(paragraphs)
+    for i, p in enumerate(paragraphs):
+        p_lower = p.lower()
+        if any(m in p_lower for m in contact_markers) or i >= len(paragraphs) - 2:
+            # Last 2 paragraphs or paragraphs with contact markers
+            contact_paragraphs.append(p)
+        else:
+            body_paragraphs.append(p)
     
-    log.warning(f"Letter HARD truncated from {len(text)} to {len(truncated)} chars")
-    return truncated.strip()
+    # Calculate space needed for contacts
+    contacts_text = '\n\n'.join(contact_paragraphs)
+    contacts_len = len(contacts_text)
+    
+    # Available space for body
+    available_for_body = max_chars - contacts_len - 10  # 10 for padding
+    
+    if available_for_body < 100:
+        # Not enough space, keep only greeting + minimal body + contacts
+        if body_paragraphs:
+            body_text = body_paragraphs[0][:100] + "..." if len(body_paragraphs[0]) > 100 else body_paragraphs[0]
+            result = body_text + '\n\n' + contacts_text
+        else:
+            result = contacts_text
+    else:
+        # Build body within limit
+        body_parts = []
+        current_len = 0
+        for p in body_paragraphs:
+            if current_len + len(p) + 2 <= available_for_body:  # +2 for \n\n
+                body_parts.append(p)
+                current_len += len(p) + 2
+            else:
+                # Try to add partial paragraph ending with sentence
+                remaining = available_for_body - current_len
+                if remaining > 50:
+                    partial = p[:remaining]
+                    for sep in ['. ', '! ', '? ']:
+                        last_end = partial.rfind(sep)
+                        if last_end > remaining * 0.5:
+                            body_parts.append(partial[:last_end + 1])
+                            break
+                break
+        
+        # Combine body + contacts
+        if body_parts:
+            result = '\n\n'.join(body_parts) + '\n\n' + contacts_text
+        else:
+            result = contacts_text
+    
+    log.warning(f"Letter SMART truncated from {len(text)} to {len(result)} chars, kept {len(contact_paragraphs)} contact paragraphs")
+    return result.strip()
 
 
 def _ensure_contacts(text: str, cfg) -> str:
