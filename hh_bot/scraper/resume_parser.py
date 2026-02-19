@@ -225,12 +225,16 @@ def generate_fallback_cover_letter(
     letter_parts = [
         f"Добрый день!",
         "",
-        f"Меня заинтересовала вакансия {vacancy_title} в компании {company_name}.",
+        f"Меня заинтересовала вакансия {vacancy_title} в вашей компании {company_name}.",
     ]
     
     # Add about section if available
     if resume.about:
-        about_short = resume.about[:150] + "..." if len(resume.about) > 150 else resume.about
+        # Cut at word boundary without ellipsis
+        if len(resume.about) > 150:
+            about_short = resume.about[:150].rsplit(' ', 1)[0]
+        else:
+            about_short = resume.about
         letter_parts.extend([
             "",
             f"{about_short}",

@@ -173,7 +173,7 @@ def _build_user_prompt(
         parts.append(f"## Ключевые навыки:\n{resume.skills}")
     
     if resume.experience:
-        exp_short = resume.experience[:300] + "..." if len(resume.experience) > 300 else resume.experience
+        exp_short = resume.experience[:300] + " …" if len(resume.experience) > 300 else resume.experience
         parts.append(f"## Опыт работы:\n{exp_short}")
     
     # Add Telegram for contact
@@ -185,10 +185,11 @@ def _build_user_prompt(
         "# ВАКАНСИЯ",
         f"## Название:\n{vacancy.title}",
         f"## Компания:\n{vacancy.employer}",
+        f"## Формулировка:\nИспользуй 'в вашей компании {vacancy.employer}' в письме",
     ])
     
     if vacancy_description:
-        desc_short = vacancy_description[:600] + "..." if len(vacancy_description) > 600 else vacancy_description
+        desc_short = vacancy_description[:600] + " …" if len(vacancy_description) > 600 else vacancy_description
         parts.append(f"## Описание:\n{desc_short}")
     
     parts.extend([
@@ -272,7 +273,7 @@ def generate_fallback_cover_letter(
     cfg = get_config()
     
     parts = ["Добрый день!"]
-    parts.append(f"Меня заинтересовала вакансия {vacancy_title} в компании {company_name}.")
+    parts.append(f"Меня заинтересовала вакансия {vacancy_title} в вашей компании {company_name}.")
     
     if resume.title:
         parts.append(f"Моя текущая позиция: {resume.title}.")
@@ -286,13 +287,18 @@ def generate_fallback_cover_letter(
     if resume.about:
         about_clean = _clean_about_text(resume.about)
         if about_clean:
-            about_short = about_clean[:200] + "..." if len(about_clean) > 200 else about_clean
-            parts.append(about_short)
+            # Limit length without ellipsis, or split into separate paragraph
+            if len(about_clean) > 200:
+                about_short = about_clean[:200].rsplit(' ', 1)[0]  # Cut at word boundary
+                parts.append(about_short)
+            else:
+                parts.append(about_clean)
     
     parts.append("Готов обсудить детали и ответить на ваши вопросы.")
     
-    # Add Telegram if provided
+    # Add Telegram if provided (with blank line before)
     if cfg.auth.telegram:
+        parts.append("")
         parts.append(f"Telegram: @{cfg.auth.telegram}")
     
     parts.append("С уважением")
