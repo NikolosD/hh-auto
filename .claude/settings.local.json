@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(dir:*)",
+      "WebSearch",
+      "WebFetch(domain:habr.com)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:medium.com)",
+      "WebFetch(domain:api.hh.ru)",
+      "WebFetch(domain:www.zenrows.com)",
+      "WebFetch(domain:vc.ru)",
+      "Bash(echo:*)"
+    ]
+  }
+}

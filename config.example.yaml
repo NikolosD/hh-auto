@@ -1,0 +1,32 @@
+auth:
+  email: "your@email.com"
+
+browser:
+  profile_dir: "./data/browser_profile"
+  headless: false      # false обязателен для patchright
+
+search:
+  query: ""            # пусто = спросить при запуске
+  area_id: 113         # 113 = вся Россия, 1 = Москва, 2 = СПб
+  max_pages: 5         # страниц выдачи за сессию
+
+limits:
+  max_applications_per_session: 20
+  min_delay_between_applications: 10   # секунды
+  max_delay_between_applications: 30
+
+filters:
+  skip_with_tests: true
+  skip_direct_vacancies: true
+  blocked_keywords: []
+  blocked_employers: []
+
+cover_letter:
+  enabled: false
+  always_include: false
+  template: |
+    Добрый день! Меня заинтересовала вакансия {vacancy_name} в компании {company_name}.
+    Готов обсудить детали.
+
+resume:
+  preferred_title: ""  # часть названия резюме, пусто = первое
