@@ -143,19 +143,48 @@ async def _check_letter_required(page: Page) -> bool:
 
 async def _check_already_applied(page: Page) -> bool:
     """Detect if user already applied to this vacancy."""
-    selectors = [
+    # Check for explicit indicators that we already applied
+    already_applied_indicators = [
         "[data-qa='vacancy-response-link-already-applied']",
+        "[data-qa='vacancy-response-link-view-topic']",  # Кнопка "Чат" - уже откликнулись
         "span:text('Вы уже откликнулись')",
         "span:text('Отклик отправлен')",
+        "span:text('Резюме доставлено')",
+        "text=Резюме доставлено",
         ".vacancy-response-status",
     ]
-    for sel in selectors:
+    for sel in already_applied_indicators:
         try:
-            if await page.locator(sel).count() > 0:
+            loc = page.locator(sel).first
+            if await loc.count() > 0 and await loc.is_visible():
                 return True
         except Exception:
             pass
-    return False
+    
+    # Check if apply button exists and has "Откликнуться" text
+    # If no such button found - likely already applied
+    apply_button_selectors = [
+        "[data-qa='vacancy-response-link-top']",
+        "[data-qa='vacancy-response-link-bottom']",
+        "button:has-text('Откликнуться')",
+    ]
+    
+    for sel in apply_button_selectors:
+        try:
+            loc = page.locator(sel).first
+            if await loc.count() > 0 and await loc.is_visible():
+                text = await loc.inner_text()
+                # Если текст кнопки содержит "отклик" - можно откликнуться
+                if 'отклик' in text.lower():
+                    return False
+                # Если текст "Чат", "Уже откликнулись" и т.д. - уже откликнулись
+                if any(word in text.lower() for word in ['чат', 'уже', 'отправлен', 'доставлено']):
+                    return True
+        except Exception:
+            pass
+    
+    # If no apply button found at all - likely already applied
+    return True
 
 
 async def _check_is_external(page: Page) -> bool:

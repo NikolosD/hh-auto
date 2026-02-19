@@ -101,6 +101,20 @@ async def run_session(page: Page, query: str, db: StateDB) -> SessionStats:
                 stats.errors += 1
                 continue
 
+            # Check if already applied (no apply button on page)
+            if details.already_applied:
+                log.info(
+                    "Skipping - already applied",
+                    id=card.vacancy_id,
+                    title=details.title,
+                )
+                stats.skipped += 1
+                stats.skip_reasons["already_applied"] = stats.skip_reasons.get("already_applied", 0) + 1
+                db.mark_skipped(
+                    card.vacancy_id, details.title, details.employer, card.url, "already_applied"
+                )
+                continue
+
             # Deep filter (after page open)
             df = deep_filter(details)
             if df.skip:
