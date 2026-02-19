@@ -20,21 +20,32 @@ log = get_logger(__name__)
 # Groq API endpoint
 GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
 
-# Default system prompt (same as main generator)
-DEFAULT_SYSTEM_PROMPT = """Ты — эксперт по написанию сопроводительных писем для отклика на вакансии.
-Твоя задача — написать ПЕРСОНАЛИЗИРОВАННОЕ сопроводительное письмо на русском языке.
+# Default system prompt with STRICT length constraints and few-shot example
+DEFAULT_SYSTEM_PROMPT = """Ты пишешь КОРОТКИЕ сопроводительные письма (макс 500 символов).
 
-КЛЮЧЕВЫЕ ПРАВИЛА:
-1. АНАЛИЗИРУЙ описание вакансии — найди ключевые требования
-2. СВЯЗЫВАЙ навыки кандидата с требованиями вакансии явно
-3. Покажи, что кандидат ПОНИМАЕТ чем занимается компания
-4. ИЗБЕГАЙ шаблонных фраз — каждое предложение для этой вакансии
-5. Максимум 150-200 слов (3-4 коротких абзаца)
-6. Профессиональный, но не формальный тон
+ПРИМЕР правильного письма (497 символов):
+---
+Добрый день!
 
-ЗАПРЕЩЕНО:
-- Общие фразы без привязки к вакансии
-- Шаблонные конструкции подходящие к любой вакансии"""
+Меня заинтересовала вакансия Frontend Developer в вашей компании. В вашем стеке React/TypeScript — это мои основные инструменты последние 3 года.
+
+Работал с похожими задачами в EPAM: мигрировал легаси на React, внедрял accessibility. Уверен, что этот опыт поможет вашему продукту.
+
+Готов обсудить детали на собеседовании.
+
+Telegram: @username
+С уважением,
+Иван
+---
+
+ТВОИ ПРАВИЛА:
+1. МАКСИМУМ 500 символов (строго!)
+2. Ровно 4 абзаца: приветствие, опыт, релевантность, призыв
+3. Каждый абзац: 1-2 коротких предложения
+4. Никаких общих фраз типа "я ответственный"
+5. Конкретика: технологии из вакансии + твой опыт
+
+Если не умещаешься — удали лишнее, но уложись в 500 символов."""
 
 
 async def generate_with_groq(
@@ -75,8 +86,8 @@ async def generate_with_groq(
                     {"role": "system", "content": config.custom_prompt or DEFAULT_SYSTEM_PROMPT},
                     {"role": "user", "content": user_prompt}
                 ],
-                "max_tokens": config.max_tokens,
-                "temperature": config.temperature,
+                "max_tokens": 300,  # Limit tokens to force short output
+                "temperature": 0.5,  # Lower temperature for more focused output
             }
             
             log.info(f"Trying Groq model: {model}")
@@ -88,8 +99,12 @@ async def generate_with_groq(
                     data = response.json()
                     if "choices" in data and len(data["choices"]) > 0:
                         cover_letter = data["choices"][0]["message"]["content"].strip()
-                        log.info(f"✅ Groq generated letter with {model}: {len(cover_letter)} chars")
-                        return _clean_cover_letter(cover_letter)
+                        log.info(f"✅ Groq generated: {len(cover_letter)} chars")
+                        # Clean and HARD truncate to 500 chars max
+                        cover_letter = _clean_cover_letter(cover_letter)
+                        cover_letter = _hard_truncate(cover_letter, max_chars=500)
+                        log.info(f"✅ After truncate: {len(cover_letter)} chars")
+                        return cover_letter
                 
                 log.warning(f"Groq model {model} failed: {response.status_code}")
         
@@ -161,6 +176,45 @@ def _clean_cover_letter(text: str) -> str:
         if lower.startswith("subject:") or lower.startswith("re:"):
             continue
         cleaned_lines.append(line)
+    
+    text = "\n".join(cleaned_lines).strip()
+    
+    # Ensure proper greeting
+    if not any(text.lower().startswith(g) for g in ["добрый", "здравствуйте", "уважаемый"]):
+        text = f"Добрый день!\n\n{text}"
+    
+    return text
+
+
+def _hard_truncate(text: str, max_chars: int = 500) -> str:
+    """Hard truncate text to max_chars, preserving sentence boundaries.
+    
+    This FORCEFULLY limits letter length regardless of AI output.
+    """
+    if len(text) <= max_chars:
+        return text
+    
+    # Find best cut point
+    truncated = text[:max_chars]
+    
+    # Try to end at sentence boundary
+    for sep in ['.\n', '!\n', '?\n', '. ', '! ', '? ']:
+        last_end = truncated.rfind(sep)
+        if last_end > max_chars * 0.6:  # At least 60% of max
+            truncated = truncated[:last_end + 1]
+            break
+    
+    # Remove incomplete last paragraph if any
+    paragraphs = [p.strip() for p in truncated.split('\n\n') if p.strip()]
+    if len(paragraphs) > 1:
+        # Check if last paragraph is incomplete (no ending punctuation)
+        last_p = paragraphs[-1]
+        if not last_p.endswith(('.', '!', '?')):
+            paragraphs = paragraphs[:-1]
+            truncated = '\n\n'.join(paragraphs)
+    
+    log.warning(f"Letter HARD truncated from {len(text)} to {len(truncated)} chars")
+    return truncated.strip()
     
     text = "\n".join(cleaned_lines).strip()
     
