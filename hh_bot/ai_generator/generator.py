@@ -23,23 +23,33 @@ OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 
 # Default system prompt for cover letter generation
 DEFAULT_SYSTEM_PROMPT = """Ты — эксперт по написанию сопроводительных писем для отклика на вакансии.
-Твоя задача — написать ПЕРСОНАЛИЗИРОВАННОЕ сопроводительное письмо на русском языке, которое показывает заинтересованность в конкретной вакансии.
+Твоя задача — написать КОРОТКОЕ, ПЕРСОНАЛИЗИРОВАННОЕ сопроводительное письмо на русском языке.
 
-КЛЮЧЕВЫЕ ПРАВИЛА:
-1. АНАЛИЗИРУЙ описание вакансии — найди ключевые требования и технологии
-2. СВЯЗЫВАЙ навыки кандидата с требованиями вакансии явно (например: "В вашем стеке React/TypeScript — это мои основные инструменты последние 3 года")
-3. Покажи, что кандидат ПОНИМАЕТ чем занимается компания и какую задачу решает
-4. ИЗБЕГАЙ шаблонных фраз — каждое предложение должно относиться к этой конкретной вакансии
-5. Максимум 150-200 слов (3-4 коротких абзаца)
-6. Профессиональный, но не формальный тон — как будто пишешь реальному человеку
-7. Закончи готовностью к собеседованию
+СТРОГИЕ ОГРАНИЧЕНИЯ (ОБЯЗАТЕЛЬНЫ К СОБЛЮДЕНИЮ):
+- МАКСИМУМ 150-200 слов
+- МАКСИМУМ 800-1000 символов с пробелами
+- Ровно 3-4 абзаца
+- Каждый абзац: максимум 2 коротких предложения
+- Если текст получается длиннее — сокращай, убирая второстепенное
+
+СТРУКТУРА ПИСЬМА:
+1. Приветствие + упоминание вакансии (1 предложение)
+2. Связь твоих навыков с требованиями (1-2 предложения)
+3. Почему эта компания/продукт интересен (1 предложение)
+4. Призыв к действию + контакт (1 предложение)
+
+ТРЕБОВАНИЯ:
+- Анализируй требования вакансии и упоминай конкретные технологии
+- Связывай свой опыт с их стеком
+- Без общих фраз типа "я ответственный и коммуникабельный"
+- Профессиональный, но не формальный тон
+- Покажи, что изучил вакансию, а не шлешь шаблон
 
 ЗАПРЕЩЕНО:
-- Общие фразы без привязки к вакансии ("у меня большой опыт", "я ответственный")
-- Копирование текста из резюме без адаптации под вакансию
-- Шаблонные конструкции которые подходят к любой вакансии
-
-Письмо должно создавать впечатление, что кандидат ВНИМАТЕЛЬНО изучил вакансию и целенаправленно откликается."""
+- Повторять содержимое резюме дословно
+- Общие фразы без конкретики
+- Больше 4 абзацев
+- Длинные предложения более 20 слов"""
 
 
 async def generate_ai_cover_letter(
@@ -185,8 +195,12 @@ async def _generate_with_openrouter(
             # Extract generated text
             if "choices" in data and len(data["choices"]) > 0:
                 cover_letter = data["choices"][0]["message"]["content"].strip()
-                log.info(f"✅ AI cover letter generated successfully: {len(cover_letter)} chars")
-                return _clean_cover_letter(cover_letter)
+                log.info(f"✅ AI cover letter generated: {len(cover_letter)} chars")
+                # Clean and truncate if too long
+                cover_letter = _clean_cover_letter(cover_letter)
+                cover_letter = _truncate_letter(cover_letter, max_chars=1000, max_paragraphs=5)
+                log.info(f"✅ Final letter length: {len(cover_letter)} chars")
+                return cover_letter
             else:
                 log.error(f"❌ Unexpected API response format: {data}")
                 return None
@@ -260,15 +274,21 @@ def _build_user_prompt(
         "3. ЯВНО укажи, почему кандидат подходит именно на эту вакансию (например: 'Вашим требованиям соответствует мой опыт работы с...')",
         "4. Приведи КОНКРЕТНЫЙ пример из опыта, релевантный задачам вакансии",
         "",
+        "СТРОГИЕ ОГРАНИЧЕНИЯ ПО ДЛИНЕ:",
+        "- МАКСИМУМ 150-200 слов (это ОБЯЗАТЕЛЬНО)",
+        "- МАКСИМУМ 800-1000 символов с пробелами",
+        "- 3-4 коротких абзаца",
+        "- Каждый абзац: 1-2 предложения",
+        "- Если не умещаешься — сократи, но сохрани ключевые моменты",
+        "",
         "Формат письма:",
         "- Начни с приветствия 'Добрый день!'",
-        "- Покажи, что изучил вакансию: укажи что именно заинтересовало (технологии/задачи/продукт)",
-        "- Объясни, какой опыт кандидата поможет решить задачи компании",
-        "- НЕ используй общие фразы типа 'у меня есть опыт разработки' — указывай конкретные технологии из вакансии",
-        "- Письмо должно показывать, что это не массовая рассылка, а целевой отклик",
-        "- Максимум 4-5 абзацев, каждый по 1-2 предложения",
-        f"- В конце укажи Telegram: @{cfg.auth.telegram if cfg.auth.telegram else '(указать при наличии)'}",
-        f"- Закончи фразой 'С уважением, {cfg.auth.name}'",
+        "- Упомяни вакансию и компанию (1 предложение)",
+        "- Свяжи свой опыт с требованиями (1-2 предложения)",
+        "- Призыв к действию (1 предложение)",
+        "- НЕ используй общие фразы типа 'у меня есть опыт разработки'",
+        f"- В конце: Telegram: @{cfg.auth.telegram if cfg.auth.telegram else '(указать при наличии)'}",
+        f"- Закончи: 'С уважением, {cfg.auth.name}'",
     ])
     
     return "\n".join(parts)
@@ -295,6 +315,47 @@ def _clean_cover_letter(text: str) -> str:
         text = f"Добрый день!\n\n{text}"
     
     return text
+
+
+def _truncate_letter(text: str, max_chars: int = 1000, max_paragraphs: int = 5) -> str:
+    """Truncate letter to reasonable length.
+    
+    Args:
+        text: Generated letter text
+        max_chars: Maximum characters (including spaces)
+        max_paragraphs: Maximum number of paragraphs
+    
+    Returns:
+        Truncated text with proper ending
+    """
+    # Split into paragraphs
+    paragraphs = [p.strip() for p in text.split("\n\n") if p.strip()]
+    
+    # Limit paragraphs
+    if len(paragraphs) > max_paragraphs:
+        paragraphs = paragraphs[:max_paragraphs]
+    
+    # Build text and check length
+    result = "\n\n".join(paragraphs)
+    
+    # If still too long, truncate at sentence boundary
+    if len(result) > max_chars:
+        # Find last sentence end before max_chars
+        truncated = result[:max_chars]
+        # Look for sentence endings: . ! ? 
+        for sep in ['. ', '! ', '? ', '.\n', '!\n', '?\n']:
+            last_end = truncated.rfind(sep)
+            if last_end > max_chars * 0.7:  # At least 70% of max length
+                truncated = truncated[:last_end + 1]
+                break
+        result = truncated.strip()
+        log.warning(f"Letter truncated from {len(text)} to {len(result)} chars")
+    
+    # Ensure it ends with proper signature indicator
+    if not result.endswith((".", "!", "?")):
+        result += "."
+    
+    return result
 
 
 def _clean_about_text(text: str) -> str:
