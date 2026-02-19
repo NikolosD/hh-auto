@@ -22,12 +22,20 @@ class AIModel(str, Enum):
     GROK_BETA = "x-ai/grok-beta"
 
 
+class AIProvider(str, Enum):
+    """AI provider options."""
+    OPENROUTER = "openrouter"
+    GROQ = "groq"
+    AUTO = "auto"  # Try all providers
+
+
 @dataclass
 class AIGeneratorConfig:
     """Configuration for AI cover letter generation."""
     enabled: bool = False
-    api_key: str = ""  # OpenRouter API ключ (опционально, есть бесплатные модели)
-    model: str = AIModel.MISTRAL_7B_FREE  # Дефолтная бесплатная модель
+    provider: str = AIProvider.AUTO  # openrouter, groq, или auto (попробовать все)
+    api_key: str = ""  # API ключ (OpenRouter или Groq)
+    model: str = AIModel.MISTRAL_7B_FREE  # Дефолтная модель (для OpenRouter)
     max_tokens: int = 500
     temperature: float = 0.7
     custom_prompt: Optional[str] = None

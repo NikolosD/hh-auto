@@ -49,7 +49,8 @@ async def generate_ai_cover_letter(
     config: Optional[AIGeneratorConfig] = None,
 ) -> Optional[str]:
     """
-    Generate a cover letter using AI via OpenRouter API.
+    Generate a cover letter using AI.
+    Tries OpenRouter first, then Groq as fallback.
     
     Args:
         resume: Parsed resume information
@@ -78,6 +79,44 @@ async def generate_ai_cover_letter(
         return None
     
     log.info("✅ AI generation prerequisites OK, proceeding...")
+    
+    from hh_bot.ai_generator.models import AIProvider
+    
+    # Route to appropriate provider
+    if config.provider == AIProvider.GROQ:
+        log.info("Using Groq provider")
+        from hh_bot.ai_generator.groq_generator import generate_with_groq
+        return await generate_with_groq(resume, vacancy, vacancy_description, config)
+    
+    elif config.provider == AIProvider.OPENROUTER:
+        log.info("Using OpenRouter provider")
+        return await _generate_with_openrouter(resume, vacancy, vacancy_description, config)
+    
+    else:  # AUTO - try all providers
+        log.info("Auto mode: trying OpenRouter first...")
+        result = await _generate_with_openrouter(resume, vacancy, vacancy_description, config)
+        if result:
+            return result
+        
+        log.info("🔄 OpenRouter failed, trying Groq...")
+        from hh_bot.ai_generator.groq_generator import generate_with_groq
+        result = await generate_with_groq(resume, vacancy, vacancy_description, config)
+        if result:
+            return result
+        
+        log.warning("❌ All AI providers failed")
+        return None
+
+
+async def _generate_with_openrouter(
+    resume: ResumeInfo,
+    vacancy: VacancyDetails,
+    vacancy_description: Optional[str] = None,
+    config: Optional[AIGeneratorConfig] = None,
+) -> Optional[str]:
+    """Generate using OpenRouter API."""
+    if config is None:
+        config = AIGeneratorConfig()
     
     try:
         # Build prompt
