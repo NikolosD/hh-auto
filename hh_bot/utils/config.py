@@ -2,10 +2,10 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from typing import List, Optional
+from typing import List, Optional, Union
 
 import yaml
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, field_validator, model_validator
 
 
 class AuthConfig(BaseModel):
@@ -21,7 +21,7 @@ class BrowserConfig(BaseModel):
 
 class SearchConfig(BaseModel):
     query: str = ""
-    area_id: int = 113  # Одна страна/регион
+    area_id: Union[int, List[int]] = 113  # Одна страна/регион (или список для совместимости)
     area_ids: list[int] = []  # Несколько стран (если указано, используется это вместо area_id)
     max_pages: int = 5
     
@@ -37,6 +37,19 @@ class SearchConfig(BaseModel):
             # Parse comma-separated string like "113,16,40"
             return [int(x.strip()) for x in v.split(',') if x.strip()]
         return v
+    
+    @model_validator(mode='after')
+    def migrate_area_id(self):
+        """Migrate area_id to area_ids if needed."""
+        # If area_id is a list, move it to area_ids
+        if isinstance(self.area_id, list):
+            if not self.area_ids:
+                self.area_ids = self.area_id
+            self.area_id = 113  # Default value
+        # If area_ids is empty but area_id is set, use area_id
+        elif not self.area_ids and self.area_id:
+            self.area_ids = [self.area_id]
+        return self
 
 
 class LimitsConfig(BaseModel):
