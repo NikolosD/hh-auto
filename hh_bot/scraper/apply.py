@@ -105,28 +105,35 @@ async def apply_to_vacancy(
         return await _handle_response_page(page, details, preferred_resume_title, resume_info)
 
     # Check if success message appeared inline
-    success = page.locator(
-        "[data-qa='vacancy-response-success'], "
-        "span:text('Отклик отправлен'), "
-        "span:text('Вы откликнулись'), "
-        "text=Резюме доставлено"
-    )
-    if await success.count() > 0:
-        log.info("Apply successful (inline confirmation)", vacancy_id=details.vacancy_id)
-        # Try to add cover letter after quick apply
-        if resume_info and resume_info.title:
-            log.info("Quick apply success - trying to add cover letter...")
-            await _add_cover_letter_after_quick_apply(page, details, resume_info)
-        return True
+    success_indicators = [
+        "[data-qa='vacancy-response-success']",
+        "span:text-is('Отклик отправлен')",
+        "span:text-is('Вы откликнулись')",
+    ]
+    
+    for sel in success_indicators:
+        try:
+            if await page.locator(sel).count() > 0:
+                log.info("Apply successful (inline confirmation)", vacancy_id=details.vacancy_id)
+                # Try to add cover letter after quick apply
+                if resume_info and resume_info.title:
+                    log.info("Quick apply success - trying to add cover letter...")
+                    await _add_cover_letter_after_quick_apply(page, details, resume_info)
+                return True
+        except Exception:
+            pass
 
     # Check for quick-apply success (resume delivered) with cover letter form
-    resume_delivered = page.locator("text=Резюме доставлено").first
-    if await resume_delivered.count() > 0 and await resume_delivered.is_visible():
-        log.info("Quick apply success (resume delivered)", vacancy_id=details.vacancy_id)
-        # Try to add cover letter
-        if resume_info and resume_info.title:
-            await _add_cover_letter_after_quick_apply(page, details, resume_info)
-        return True
+    try:
+        resume_delivered = page.locator("text=Резюме доставлено").first
+        if await resume_delivered.count() > 0 and await resume_delivered.is_visible():
+            log.info("Quick apply success (resume delivered)", vacancy_id=details.vacancy_id)
+            # Try to add cover letter
+            if resume_info and resume_info.title:
+                await _add_cover_letter_after_quick_apply(page, details, resume_info)
+            return True
+    except Exception:
+        pass
 
     log.warning("Could not confirm apply result", url=current_url)
     return False
