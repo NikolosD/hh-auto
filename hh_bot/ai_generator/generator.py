@@ -156,24 +156,29 @@ def _build_user_prompt(
     from hh_bot.utils.config import get_config
     cfg = get_config()
     
+    # Clean up about text
+    about_clean = ""
+    if resume.about:
+        about_clean = _clean_about_text(resume.about)
+    
     parts = [
         "# ДАННЫЕ КАНДИДАТА",
         f"## Желаемая позиция:\n{resume.title or 'Не указана'}"
     ]
     
-    if resume.about:
-        parts.append(f"## О себе:\n{resume.about}")
+    if about_clean:
+        parts.append(f"## Опыт и навыки:\n{about_clean}")
     
     if resume.skills:
         parts.append(f"## Ключевые навыки:\n{resume.skills}")
     
     if resume.experience:
-        exp_short = resume.experience[:500] + "..." if len(resume.experience) > 500 else resume.experience
+        exp_short = resume.experience[:300] + "..." if len(resume.experience) > 300 else resume.experience
         parts.append(f"## Опыт работы:\n{exp_short}")
     
     # Add Telegram for contact
     if cfg.auth.telegram:
-        parts.append(f"## Контакт:\nTelegram: @{cfg.auth.telegram}")
+        parts.append(f"## Контакт для связи:\nTelegram: @{cfg.auth.telegram}")
     
     parts.extend([
         "",
@@ -183,20 +188,27 @@ def _build_user_prompt(
     ])
     
     if vacancy_description:
-        desc_short = vacancy_description[:800] + "..." if len(vacancy_description) > 800 else vacancy_description
+        desc_short = vacancy_description[:600] + "..." if len(vacancy_description) > 600 else vacancy_description
         parts.append(f"## Описание:\n{desc_short}")
     
     parts.extend([
         "",
         "# ЗАДАЧА",
         "Напиши сопроводительное письмо для отклика на эту вакансию.",
-        "Письмо должно быть на русском языке.",
+        "",
+        "Требования к письму:",
+        "1. Начни с приветствия 'Добрый день!'",
+        "2. Упомяни интерес к вакансии и компании",
+        "3. Кратко опиши свой релевантный опыт (2-3 предложения)",
+        "4. НЕ используй заголовки типа 'О себе' внутри письма",
+        "5. Письмо должно быть компактным (5-7 предложений)",
+        "6. Используй одинарные переносы строк между абзацами",
+        "7. НЕ добавляй лишних пустых строк",
+        f"8. В конце обязательно укажи Telegram: @{cfg.auth.telegram if cfg.auth.telegram else '(указать при наличии)'}",
+        "9. Закончи фразой 'С уважением'",
     ])
     
-    if cfg.auth.telegram:
-        parts.append(f"В конце письма обязательно укажи Telegram для связи: @{cfg.auth.telegram}")
-    
-    return "\n\n".join(parts)
+    return "\n".join(parts)
 
 
 def _clean_cover_letter(text: str) -> str:
@@ -222,6 +234,34 @@ def _clean_cover_letter(text: str) -> str:
     return text
 
 
+def _clean_about_text(text: str) -> str:
+    """Clean up 'About' text by removing headers and extra whitespace."""
+    # Remove common headers
+    text = text.replace("О себе", "").replace("О себе", "")  # NBSP and regular space
+    text = text.replace("About", "").replace("ABOUT", "")
+    
+    # Remove Telegram and Email lines (we add them separately)
+    lines = text.split("\n")
+    cleaned_lines = []
+    for line in lines:
+        line = line.strip()
+        if not line:
+            continue
+        # Skip contact info lines
+        if line.lower().startswith(("telegram", "телеграм", "e-mail", "email", "телефон", "phone")):
+            continue
+        # Skip location lines
+        if "грузия" in line.lower() or "тбилиси" in line.lower() or "открыт к" in line.lower():
+            continue
+        cleaned_lines.append(line)
+    
+    # Join and clean up extra whitespace
+    text = " ".join(cleaned_lines)
+    text = " ".join(text.split())  # Remove multiple spaces
+    
+    return text.strip()
+
+
 def generate_fallback_cover_letter(
     resume: ResumeInfo,
     vacancy_title: str,
@@ -232,29 +272,30 @@ def generate_fallback_cover_letter(
     cfg = get_config()
     
     parts = ["Добрый день!"]
+    parts.append(f"Меня заинтересовала вакансия {vacancy_title} в компании {company_name}.")
     
     if resume.title:
-        parts.append(f"\nМеня заинтересовала вакансия {vacancy_title} в компании {company_name}.")
         parts.append(f"Моя текущая позиция: {resume.title}.")
-    else:
-        parts.append(f"\nМеня заинтересовала вакансия {vacancy_title} в компании {company_name}.")
     
     if resume.skills:
         skills_parts = resume.skills.replace(",", "•").replace(";", "•").split("•")
         skills_list = [s.strip() for s in skills_parts[:4] if s.strip()]
         if skills_list:
-            parts.append(f"\nМои ключевые навыки: {', '.join(skills_list)}.")
+            parts.append(f"Мои ключевые навыки: {', '.join(skills_list)}.")
     
     if resume.about:
-        about_short = resume.about[:120] + "..." if len(resume.about) > 120 else resume.about
-        parts.append(f"\n{about_short}")
+        about_clean = _clean_about_text(resume.about)
+        if about_clean:
+            about_short = about_clean[:200] + "..." if len(about_clean) > 200 else about_clean
+            parts.append(about_short)
     
-    parts.append("\nГотов обсудить детали и ответить на ваши вопросы.")
+    parts.append("Готов обсудить детали и ответить на ваши вопросы.")
     
     # Add Telegram if provided
     if cfg.auth.telegram:
-        parts.append(f"\nTelegram: @{cfg.auth.telegram}")
+        parts.append(f"Telegram: @{cfg.auth.telegram}")
     
-    parts.append("\nС уважением")
+    parts.append("С уважением")
     
+    # Join with single newlines, no extra blank lines
     return "\n".join(parts)
