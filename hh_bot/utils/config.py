@@ -21,8 +21,22 @@ class BrowserConfig(BaseModel):
 
 class SearchConfig(BaseModel):
     query: str = ""
-    area_id: int = 113
+    area_id: int = 113  # Одна страна/регион
+    area_ids: list[int] = []  # Несколько стран (если указано, используется это вместо area_id)
     max_pages: int = 5
+    
+    @field_validator('area_ids', mode='before')
+    @classmethod
+    def parse_area_ids(cls, v):
+        """Parse area_ids from various formats."""
+        if v is None:
+            return []
+        if isinstance(v, int):
+            return [v]
+        if isinstance(v, str):
+            # Parse comma-separated string like "113,16,40"
+            return [int(x.strip()) for x in v.split(',') if x.strip()]
+        return v
 
 
 class LimitsConfig(BaseModel):

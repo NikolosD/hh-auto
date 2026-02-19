@@ -28,19 +28,36 @@ class VacancyCard:
 async def search_vacancies(
     page: Page,
     query: str,
-    area_id: int = 113,
+    area_id: int | list[int] = 113,
     page_num: int = 0,
 ) -> List[VacancyCard]:
-    """Navigate to search results page and parse vacancy cards."""
-    params = {
-        "text": query,
-        "area": area_id,
-        "page": page_num,
-        "per_page": 20,
-        "search_field": "name",
-    }
-    url = f"{SEARCH_BASE}?{urlencode(params)}"
-    log.info("Loading search page", url=url, page=page_num)
+    """Navigate to search results page and parse vacancy cards.
+    
+    Args:
+        area_id: Single area ID or list of area IDs for multiple countries
+                 Common IDs: 113=Russia, 16=Belarus, 40=Kazakhstan, 
+                 1=Moscow, 2=St.Petersburg
+    """
+    # Build params with support for multiple areas
+    params_list = [
+        ("text", query),
+        ("page", page_num),
+        ("per_page", 20),
+        ("search_field", "name"),
+    ]
+    
+    # Handle single or multiple area IDs
+    if isinstance(area_id, list):
+        for aid in area_id:
+            params_list.append(("area", aid))
+    else:
+        params_list.append(("area", area_id))
+    
+    # Build URL manually to support multiple area params
+    params_str = "&".join(f"{k}={v}" for k, v in params_list)
+    url = f"{SEARCH_BASE}?{params_str}"
+    
+    log.info("Loading search page", url=url, page=page_num, areas=area_id)
 
     await page.goto(url, wait_until="domcontentloaded", timeout=20000)
     await sleep_page_load()

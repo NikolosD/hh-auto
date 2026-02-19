@@ -57,10 +57,18 @@ async def run_session(page: Page, query: str, db: StateDB) -> SessionStats:
         except Exception as e:
             log.warning("Failed to fetch resume content", error=str(e))
 
+    # Determine which area IDs to use
+    if cfg.search.area_ids:
+        area_ids = cfg.search.area_ids
+        area_desc = f"{len(area_ids)} countries: {area_ids}"
+    else:
+        area_ids = cfg.search.area_id
+        area_desc = str(area_ids)
+    
     log.info(
         "Starting session",
         query=query,
-        area_id=cfg.search.area_id,
+        areas=area_desc,
         max_pages=cfg.search.max_pages,
         max_apps=max_apps,
     )
@@ -71,7 +79,7 @@ async def run_session(page: Page, query: str, db: StateDB) -> SessionStats:
             log.info("Reached max applications limit", limit=max_apps)
             break
 
-        cards = await search_vacancies(page, query, cfg.search.area_id, page_num)
+        cards = await search_vacancies(page, query, area_ids, page_num)
         if not cards:
             log.info("No more vacancies found", page=page_num)
             break
