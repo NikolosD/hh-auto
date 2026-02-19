@@ -45,20 +45,37 @@ def cli(ctx: click.Context, config: str, log_level: str) -> None:
 
 
 @cli.command()
+@click.option("--email", "-e", default=None, help="Email для входа (если не указан, берется из config.yaml)")
+@click.option("--interactive", "-i", is_flag=True, help="Интерактивный ввод email")
 @click.pass_context
-def login(ctx: click.Context) -> None:
+def login(ctx: click.Context, email: str | None, interactive: bool) -> None:
     """Войти в hh.ru через браузер (email + код из письма)."""
     cfg = _load_config(ctx.obj["config_path"])
+    
+    # Определяем email для входа
+    if interactive or (not email and not cfg.auth.email):
+        # Интерактивный ввод
+        email = click.prompt("Введите email для входа в hh.ru")
+    elif email:
+        # Используем email из аргумента командной строки
+        pass
+    else:
+        # Используем email из конфига
+        email = cfg.auth.email
+    
+    if not email:
+        click.echo("Ошибка: email не указан. Используйте --email или добавьте в config.yaml", err=True)
+        sys.exit(1)
 
     async def _run():
         from hh_bot.browser.launcher import launch_browser
-        from hh_bot.auth.login import do_login, is_logged_in
+        from hh_bot.auth.login import do_login_with_email, is_logged_in
 
         async with launch_browser() as (context, page):
             if await is_logged_in(page):
                 click.echo("Уже авторизованы! Сессия активна.")
                 return
-            await do_login(page)
+            await do_login_with_email(page, email)
             click.echo("Авторизация успешна. Сессия сохранена в профиле браузера.")
 
     asyncio.run(_run())
