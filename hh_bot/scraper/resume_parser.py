@@ -274,7 +274,15 @@ def generate_fallback_cover_letter(
         "",
         "Готов обсудить детали и ответить на ваши вопросы.",
         "",
-        "С уважением"
+        "С уважением,",
     ])
+    
+    # Add name if provided in config
+    if cfg.auth.name:
+        letter_parts.append(cfg.auth.name)
+    elif cfg.auth.email:
+        # Use email username as fallback
+        email_name = cfg.auth.email.split('@')[0]
+        letter_parts.append(email_name)
     
     return "\n".join(letter_parts)

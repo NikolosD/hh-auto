@@ -11,6 +11,7 @@ from pydantic import BaseModel, field_validator, model_validator
 class AuthConfig(BaseModel):
     email: str = ""
     telegram: str = ""  # Telegram username для сопроводительных писем
+    name: str = ""      # Имя для подписи в сопроводительных письмах
 
 
 class BrowserConfig(BaseModel):

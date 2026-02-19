@@ -206,7 +206,7 @@ def _build_user_prompt(
         "6. Используй одинарные переносы строк между абзацами",
         "7. НЕ добавляй лишних пустых строк",
         f"8. В конце обязательно укажи Telegram: @{cfg.auth.telegram if cfg.auth.telegram else '(указать при наличии)'}",
-        "9. Закончи фразой 'С уважением'",
+        f"9. Закончи фразой 'С уважением, {cfg.auth.name}'",
     ])
     
     return "\n".join(parts)
@@ -311,7 +311,15 @@ def generate_fallback_cover_letter(
         parts.append("")
         parts.append(f"Telegram: @{cfg.auth.telegram}")
     
-    parts.append("С уважением")
+    # Add name if provided
+    if cfg.auth.name:
+        parts.append("")
+        parts.append(f"С уважением,\n{cfg.auth.name}")
+    else:
+        parts.append("")
+        parts.append("С уважением,")
+        if cfg.auth.email:
+            parts.append(cfg.auth.email.split('@')[0])
     
     # Join with single newlines, no extra blank lines
     return "\n".join(parts)

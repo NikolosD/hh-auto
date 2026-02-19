@@ -1,5 +1,6 @@
 auth:
   email: "your@email.com"
+  name: "Иван Иванов"  # Имя для подписи в сопроводительных письмах (опционально)
 
 browser:
   profile_dir: "./data/browser_profile"
