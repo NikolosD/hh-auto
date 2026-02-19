@@ -108,10 +108,24 @@ async def apply_to_vacancy(
     success = page.locator(
         "[data-qa='vacancy-response-success'], "
         "span:text('Отклик отправлен'), "
-        "span:text('Вы откликнулись')"
+        "span:text('Вы откликнулись'), "
+        "text=Резюме доставлено"
     )
     if await success.count() > 0:
         log.info("Apply successful (inline confirmation)", vacancy_id=details.vacancy_id)
+        # Try to add cover letter after quick apply
+        if resume_info and resume_info.title:
+            log.info("Quick apply success - trying to add cover letter...")
+            await _add_cover_letter_after_quick_apply(page, details, resume_info)
+        return True
+
+    # Check for quick-apply success (resume delivered) with cover letter form
+    resume_delivered = page.locator("text=Резюме доставлено").first
+    if await resume_delivered.count() > 0 and await resume_delivered.is_visible():
+        log.info("Quick apply success (resume delivered)", vacancy_id=details.vacancy_id)
+        # Try to add cover letter
+        if resume_info and resume_info.title:
+            await _add_cover_letter_after_quick_apply(page, details, resume_info)
         return True
 
     log.warning("Could not confirm apply result", url=current_url)
@@ -254,6 +268,80 @@ async def _handle_response_modal(
     return True
 
 
+async def _add_cover_letter_after_quick_apply(
+    page: Page,
+    details: VacancyDetails,
+    resume_info: Optional[ResumeInfo] = None,
+) -> bool:
+    """
+    Add cover letter after quick apply (when form appears on vacancy page).
+    This handles the case when 'Откликнуться' button submits immediately 
+    and shows a form for adding cover letter.
+    """
+    log.info("Checking for post-apply cover letter form...")
+    
+    # Check for the cover letter form that appears after quick apply
+    letter_form = page.locator(
+        "[data-qa='vacancy-response-letter-informer'], "
+        "form:has([data-qa='vacancy-response-letter-submit'])"
+    ).first
+    
+    if await letter_form.count() == 0:
+        log.debug("No post-apply cover letter form found")
+        return False
+    
+    if not await letter_form.is_visible():
+        log.debug("Cover letter form is not visible")
+        return False
+    
+    log.info("Found post-apply cover letter form, filling...")
+    
+    # Find textarea in the form
+    textarea = letter_form.locator("textarea[name='text']").first
+    if await textarea.count() == 0:
+        textarea = letter_form.locator("textarea").first
+    
+    if await textarea.count() == 0:
+        log.warning("No textarea found in cover letter form")
+        return False
+    
+    # Generate and fill cover letter
+    cfg = get_config()
+    if not cfg.cover_letter.enabled:
+        log.debug("Cover letter disabled, skipping")
+        return False
+    
+    if resume_info and resume_info.title:
+        text = await generate_cover_letter(
+            resume_info, details.title, details.employer, details.description
+        )
+    else:
+        text = cfg.cover_letter.template.format(
+            vacancy_name=details.title,
+            company_name=details.employer,
+        )
+    
+    log.info(f"Filling post-apply cover letter ({len(text)} chars)...")
+    await human_type_locator(page, textarea, text)
+    await sleep_micro()
+    
+    # Submit the form
+    submit_btn = letter_form.locator(
+        "[data-qa='vacancy-response-letter-submit'], "
+        "button[type='submit']"
+    ).first
+    
+    if await submit_btn.count() > 0:
+        log.info("Submitting cover letter...")
+        await human_click_locator(page, submit_btn)
+        await sleep_after_submit()
+        log.info("Cover letter submitted successfully")
+        return True
+    else:
+        log.warning("Submit button not found in cover letter form")
+        return False
+
+
 async def _handle_response_page(
     page: Page,
     details: VacancyDetails,
@@ -263,6 +351,9 @@ async def _handle_response_page(
     """Handle full-page response form."""
     # Check for location warning on page too
     await _handle_location_warning_modal(page)
+    
+    # Check for post-apply cover letter form
+    await _add_cover_letter_after_quick_apply(page, details, resume_info)
     
     await _select_resume(page, preferred_resume_title)
     await _fill_cover_letter(page, details, resume_info)
