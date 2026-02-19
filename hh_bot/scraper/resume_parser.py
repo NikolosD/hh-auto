@@ -54,6 +54,47 @@ async def fetch_resume_content(page: Page, resume_url: Optional[str] = None) -> 
     return info
 
 
+async def bump_resume_if_available(page: Page) -> bool:
+    """
+    Click 'Поднять в поиске' (bump resume) button if available on the resumes page.
+    This moves the resume to the top of search results.
+    
+    Returns True if button was clicked, False otherwise.
+    """
+    log.info("Checking for 'Bump resume' button...")
+    
+    # Navigate to resumes page
+    await page.goto("https://hh.ru/applicant/resumes", wait_until="domcontentloaded", timeout=20000)
+    await sleep_page_load()
+    
+    # Look for the bump button by data-qa or text
+    bump_button = page.locator(
+        "[data-qa='resume-update-button'], "
+        "[data-qa='resume-update-button resume-update-button_actions'], "
+        "button:has-text('Поднять в поиске'), "
+        "span:has-text('Поднять в поиске')"
+    ).first
+    
+    if await bump_button.count() == 0:
+        log.info("No 'Bump resume' button found (may be on cooldown or already bumped)")
+        return False
+    
+    # Check if button is visible and enabled
+    if not await bump_button.is_visible():
+        log.info("Bump button is not visible")
+        return False
+    
+    try:
+        log.info("Clicking 'Поднять в поиске' button...")
+        await bump_button.click()
+        await sleep_page_load()
+        log.info("✅ Resume bumped successfully!")
+        return True
+    except Exception as e:
+        log.warning(f"Failed to click bump button: {e}")
+        return False
+
+
 async def _parse_resume_page(page: Page) -> ResumeInfo:
     """Parse resume page and extract key information."""
     

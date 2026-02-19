@@ -11,7 +11,7 @@ from hh_bot.bot.filters import deep_filter, quick_filter
 from hh_bot.bot.state import StateDB
 from hh_bot.browser.human import random_micro_move
 from hh_bot.scraper.apply import apply_to_vacancy, ApplyError
-from hh_bot.scraper.resume_parser import fetch_resume_content, ResumeInfo
+from hh_bot.scraper.resume_parser import fetch_resume_content, ResumeInfo, bump_resume_if_available
 from hh_bot.scraper.search import search_vacancies
 from hh_bot.scraper.vacancy import fetch_vacancy_details
 from hh_bot.utils.config import get_config
@@ -56,6 +56,17 @@ async def run_session(page: Page, query: str, db: StateDB) -> SessionStats:
                 log.warning("Could not parse resume, using default cover letter")
         except Exception as e:
             log.warning("Failed to fetch resume content", error=str(e))
+    
+    # Try to bump resume (move to top of search results)
+    log.info("Attempting to bump resume...")
+    try:
+        bumped = await bump_resume_if_available(page)
+        if bumped:
+            log.info("Resume bumped to top of search results")
+        else:
+            log.info("Resume not bumped (may be on cooldown or already at top)")
+    except Exception as e:
+        log.warning("Failed to bump resume", error=str(e))
 
     # Determine which area IDs to use
     if cfg.search.area_ids:
