@@ -12,7 +12,7 @@ from hh_bot.bot.state import StateDB
 from hh_bot.browser.human import random_micro_move
 from hh_bot.scraper.apply import apply_to_vacancy, ApplyError
 from hh_bot.scraper.resume_parser import fetch_resume_content, ResumeInfo
-from hh_bot.scraper.search import search_vacancies, has_next_page
+from hh_bot.scraper.search import search_vacancies
 from hh_bot.scraper.vacancy import fetch_vacancy_details
 from hh_bot.utils.config import get_config
 from hh_bot.utils.delays import (
@@ -154,11 +154,6 @@ async def run_session(page: Page, query: str, db: StateDB) -> SessionStats:
             else:
                 stats.skipped += 1
                 stats.skip_reasons["apply_failed"] = stats.skip_reasons.get("apply_failed", 0) + 1
-
-        # Check if there's another page
-        if not await has_next_page(page):
-            log.info("No next page in search results")
-            break
 
         # Brief pause between pages
         await asyncio.sleep(2.0)
