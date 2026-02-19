@@ -371,27 +371,26 @@ def _ensure_letter_contacts(text: str) -> str:
     telegram = cfg.auth.telegram
     name = cfg.auth.name or (cfg.auth.email.split('@')[0] if cfg.auth.email else "")
     
-    # Replace placeholder @username with real telegram
+    # FORCE replace ANY telegram username with real one
     if telegram:
-        text = text.replace("@username", f"@{telegram}")
-        text = text.replace("@your_username", f"@{telegram}")
-        text = text.replace("Telegram: username", f"Telegram: @{telegram}")
+        import re
+        # Replace @username patterns (any username after @)
+        text = re.sub(r'@[a-zA-Z0-9_]+', f'@{telegram}', text)
+        # Replace "Telegram: anything" with real telegram
+        text = re.sub(r'Telegram:\s*@?[a-zA-Z0-9_]+', f'Telegram: @{telegram}', text, flags=re.IGNORECASE)
     
-    # Replace placeholder name "Иван" with real name
+    # FORCE replace ANY name in signature with real name
     if name:
-        text = text.replace(", Иван", f", {name}")
-        text = text.replace("\nИван", f"\n{name}")
-        text = text.replace("Иван\n", f"{name}\n")
+        import re
+        # Replace "С уважением, Anything" with real name
+        text = re.sub(r'С уважением,\s*\n*.+', f'С уважением,\n{name}', text, flags=re.IGNORECASE)
     
-    # Check if real telegram is already there
-    has_real_telegram = telegram and (f"@{telegram}" in text or f"t.me/{telegram}" in text)
-    
-    # Add Telegram if missing and configured
-    if not has_real_telegram and telegram:
+    # If somehow still no telegram - add it
+    if telegram and f"@{telegram}" not in text:
         text += f"\n\nTelegram: @{telegram}"
     
-    # Add name signature if missing
-    if "с уважением" not in text.lower() and name:
+    # If somehow still no signature - add it
+    if name and name not in text:
         text += f"\n\nС уважением,\n{name}"
     
     return text
