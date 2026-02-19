@@ -223,6 +223,22 @@ async def _handle_response_modal(
     """Handle the apply modal dialog."""
     log.info(f"=== HANDLE_RESPONSE_MODAL === resume_info={resume_info is not None}")
     
+    # Check for employer questions/test form
+    cfg = get_config()
+    has_employer_questions = await page.locator(
+        "[data-qa='employer-asking-for-test'], "
+        "[data-qa='test-description'], "
+        "input[name*='task_'], "
+        "textarea[name*='task_']"
+    ).count() > 0
+    
+    if has_employer_questions:
+        if cfg.filters.skip_with_tests:
+            log.info("Skipping vacancy with employer questions (test)", vacancy_id=details.vacancy_id)
+            return False
+        else:
+            log.warning("Vacancy has employer questions but skip_with_tests is False", vacancy_id=details.vacancy_id)
+    
     # First check for location warning modal
     await _handle_location_warning_modal(page)
     
